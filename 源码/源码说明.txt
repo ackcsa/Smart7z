@@ -1,0 +1,20 @@
+Smart 7z Ultra 1.0.0 源码版
+===========================
+
+文件
+----
+- Smart7z-1.0.0-source.zip
+
+源码包包含一方 Python 源码、测试、构建脚本、资源模板和用户手册；
+不包含构建产物、虚拟环境、离线工具链、缓存或运行时恢复记录。
+
+运行与验证
+----------
+- 建议使用 64 位 Python 3.12（含 Tkinter）。
+- 安装 7-Zip，或将 7z.exe 放在解压后的源码根目录。
+- 启动：python smart7z.py
+- 全量测试：python -m unittest discover -s tests -v
+- 构建：powershell -ExecutionPolicy Bypass -File .\build_release.ps1
+
+完整说明见源码包中的 README.txt 和 Smart7z-User-Manual.html。
+校验结果应与同目录 SHA256SUMS.txt 一致。

@@ -1,0 +1,31 @@
+# Unrelated projects and local utilities in this workspace
+/shuorenhua/
+/二维码自动解析-修复版.user.js
+
+# Local build toolchains and environments
+/01_MainProgram/smart7z/.build-tools/
+/01_MainProgram/smart7z/.build-venv/
+/01_MainProgram/smart7z/build/
+/01_MainProgram/smart7z/release/
+
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Smart7z runtime state (the empty resource templates remain tracked)
+recovery-v*.json
+recovery-v*.json.lock
+ipc-v*.json
+startup-v*.lock
+Smart7z_Session_*/
+*.tmp
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

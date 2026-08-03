@@ -1,0 +1,21 @@
+{
+    "7z_path": "",
+    "target_dir": "",
+    "extract_to_source": true,
+    "wait_disk_space": true,
+    "del_archive": false,
+    "deep_scan": false,
+    "temp_dir": "C:\\Temp_Smart7z",
+    "password_file": "code.txt",
+    "extract_mode": "staging",
+    "config_version": 1,
+    "cleanup_policy": "keep",
+    "nested_extraction": false,
+    "max_nested_depth": 2,
+    "space_wait_timeout": 7200,
+    "max_manifest_entries": 200000,
+    "max_output_files": 200000,
+    "max_output_bytes": 0,
+    "max_nested_children": 50,
+    "max_nested_output_bytes": 0
+}

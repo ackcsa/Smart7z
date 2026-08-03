@@ -1,0 +1,27 @@
+Smart7z third-party notices
+============================
+
+This distribution includes third-party runtime components. Their full license
+texts are provided in the accompanying licenses directory.
+
+7-Zip
+  Copyright (C) 1999-2026 Igor Pavlov.
+  7z.exe and 7z.dll are distributed under the terms described in
+  7-Zip-License.txt, including GNU LGPL and the unRAR restriction.
+
+Python
+  Copyright Python Software Foundation and contributors.
+  Distributed under the Python Software Foundation License.
+
+Tcl/Tk
+  Copyright the Regents of the University of California, Sun Microsystems,
+  Scriptics Corporation, and other contributors.
+  The Tcl/Tk license terms are included as Tcl-Tk-license.terms.
+
+TkinterDnD2 and TkDND
+  TkinterDnD2 is a Python wrapper around the TkDND extension. Applicable
+  license texts installed by the upstream package are included here.
+
+PyInstaller bootloader
+  The executable uses the PyInstaller bootloader. Its license and bootloader
+  exception are included with this package.
