@@ -1924,7 +1924,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 self.assertFalse(app.scan_progress_frame.packed)
                 app._on_closing()
 
-    def test_compat_scan_reuses_candidate_without_full_file_scan(self):
+    def test_compat_scan_reuses_candidate_before_classifier(self):
         with tempfile.TemporaryDirectory() as temp:
             media = Path(temp) / "hidden.mp4"
             media.write_bytes(b"media")
@@ -1945,12 +1945,10 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                     mock.patch.object(
                         ui_app,
                         "classify_automatic_candidate",
-                        return_value=AutoDiscoveryDecision(
-                            False,
-                            "semantic_container",
-                            semantic_kind="iso_bmff_media",
+                        side_effect=AssertionError(
+                            "compatible layout must bypass generic classification"
                         ),
-                    ) as classifier,
+                    ),
                     mock.patch.object(
                         ui_app,
                         "find_steganographier_candidates",
@@ -1971,9 +1969,102 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 self.assertEqual(len(scheduler.jobs), 1)
                 self.assertEqual(scheduler.jobs[0].stego_candidates, [candidate])
                 self.assertEqual(compat_scan.call_count, 1)
-                self.assertFalse(
-                    classifier.call_args.kwargs["allow_full_embedded_scan"]
-                )
+                app._on_closing()
+
+    def test_deep_scan_prefers_compatible_candidate_before_full_scan(self):
+        with tempfile.TemporaryDirectory() as temp:
+            media = Path(temp) / "hidden.mp4"
+            media.write_bytes(b"media")
+            candidate = ArchiveCandidate(
+                host_format="bmff",
+                embedded_format="zip",
+                start_offset=1,
+                end_offset=5,
+                mode="steganographier_mp4_trailing",
+                confidence=Confidence.HIGH,
+                validation_flags=["steganographier_compatible"],
+            )
+            config = _test_config(temp)
+            config["deep_scan"] = True
+            with _patched_ui(config):
+                root = _FakeRoot()
+                app = ui_app.Smart7zAppModern(root)
+                scheduler = _FakeScheduler.instances[-1]
+                with (
+                    mock.patch.object(
+                        ui_app,
+                        "find_steganographier_candidates",
+                        return_value=[candidate],
+                    ) as compat_scan,
+                    mock.patch.object(
+                        ui_app,
+                        "classify_automatic_candidate",
+                        side_effect=AssertionError(
+                            "deep scan must honor compatible geometry first"
+                        ),
+                    ),
+                    mock.patch.object(
+                        ui_app,
+                        "find_candidates",
+                        side_effect=AssertionError(
+                            "deep scan must not expose randomized decoys"
+                        ),
+                    ),
+                ):
+                    self.assertTrue(app._start_background_scan([temp]))
+                    app._scan_thread.join(timeout=2)
+                    root.run_deferred("_drain_tk_queue")
+
+                self.assertEqual(len(scheduler.jobs), 1)
+                self.assertEqual(scheduler.jobs[0].stego_candidates, [candidate])
+                self.assertEqual(compat_scan.call_count, 1)
+                app._on_closing()
+
+    def test_deep_scan_falls_back_after_compatible_probe_misses(self):
+        with tempfile.TemporaryDirectory() as temp:
+            unknown = Path(temp) / "unknown.bin"
+            unknown.write_bytes(b"unknown")
+            candidate = ArchiveCandidate(
+                embedded_format="7z",
+                start_offset=1,
+                end_offset=7,
+                mode="signature_only",
+                confidence=Confidence.LOW,
+            )
+            config = _test_config(temp)
+            config["deep_scan"] = True
+            with _patched_ui(config):
+                root = _FakeRoot()
+                app = ui_app.Smart7zAppModern(root)
+                scheduler = _FakeScheduler.instances[-1]
+                with (
+                    mock.patch.object(
+                        ui_app,
+                        "find_steganographier_candidates",
+                        return_value=[],
+                    ) as compat_scan,
+                    mock.patch.object(
+                        ui_app,
+                        "classify_automatic_candidate",
+                        return_value=AutoDiscoveryDecision(
+                            False, "no_archive_structure"
+                        ),
+                    ) as classifier,
+                    mock.patch.object(
+                        ui_app,
+                        "find_candidates",
+                        return_value=[candidate],
+                    ) as deep_scan,
+                ):
+                    self.assertTrue(app._start_background_scan([temp]))
+                    app._scan_thread.join(timeout=2)
+                    root.run_deferred("_drain_tk_queue")
+
+                self.assertEqual(len(scheduler.jobs), 1)
+                self.assertEqual(scheduler.jobs[0].stego_candidates, [candidate])
+                self.assertEqual(compat_scan.call_count, 1)
+                self.assertEqual(classifier.call_count, 1)
+                self.assertEqual(deep_scan.call_count, 1)
                 app._on_closing()
 
     def test_scan_exception_releases_slot_and_allows_next_scan(self):

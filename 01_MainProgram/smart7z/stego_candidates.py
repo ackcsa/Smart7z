@@ -47,6 +47,9 @@ SIG_7Z = b'7z\xbc\xaf\x27\x1c'
 
 EOCD_MIN_SIZE = 22
 EOCD_MAX_COMMENT = 65557  # 22 + 65535
+ZIP64_RECORD_MIN_SIZE = 56
+ZIP64_LOCATOR_SIZE = 20
+ZIP64_RECORD_SEARCH_BYTES = 64 * 1024
 
 ZIP_LOCAL_HEADER_SIZE = 30
 ZIP_CENTRAL_HEADER_SIZE = 46
@@ -234,6 +237,24 @@ class _ZipGeometry:
         self.flags: List[str] = []
 
 
+class _Zip64Geometry:
+    """Strictly validated adjacent ZIP64 end-record geometry."""
+
+    def __init__(
+        self,
+        record_offset: int,
+        relative_record_offset: int,
+        entries: int,
+        central_directory_size: int,
+        central_directory_offset: int,
+    ):
+        self.record_offset = record_offset
+        self.relative_record_offset = relative_record_offset
+        self.entries = entries
+        self.central_directory_size = central_directory_size
+        self.central_directory_offset = central_directory_offset
+
+
 def _validate_eocd_at(path: str, file_size: int,
                      eocd_offset: int) -> Optional[_ZipGeometry]:
     """Validate an EOCD record and build ZIP geometry. Returns None on failure."""
@@ -269,68 +290,66 @@ def _validate_eocd_at(path: str, file_size: int,
 
     zip_end = eocd_end
 
-    # Determine ZIP64
-    is_zip64 = (cd_offset == 0xFFFFFFFF or cd_size == 0xFFFFFFFF or
-                num_rec == 0xFFFF or total_rec == 0xFFFF)
+    classic_requires_zip64 = (
+        disk == 0xFFFF
+        or cd_start_disk == 0xFFFF
+        or cd_offset == 0xFFFFFFFF
+        or cd_size == 0xFFFFFFFF
+        or num_rec == 0xFFFF
+        or total_rec == 0xFFFF
+    )
+    zip64 = _find_adjacent_zip64_geometry(
+        path,
+        eocd_offset,
+        disk=disk,
+        cd_start_disk=cd_start_disk,
+        num_rec=num_rec,
+        total_rec=total_rec,
+        cd_size=cd_size,
+        cd_offset=cd_offset,
+    )
+    if classic_requires_zip64 and zip64 is None:
+        logger.debug("Required ZIP64 geometry is invalid at EOCD %d", eocd_offset)
+        return None
+    is_zip64 = zip64 is not None
     geom.is_zip64 = is_zip64
 
     rel_cd_offset: Optional[int] = None
     abs_cd_offset: Optional[int] = None
     cd_size_final = cd_size
 
-    if is_zip64:
-        loc_result = _find_zip64_locator(path, file_size, eocd_offset)
-        if loc_result is not None:
-            rec_offset, locator_ok = loc_result
-            geom.zip64_record_offset = rec_offset
-            geom.flags.append("zip64_record_found")
-            if locator_ok:
-                geom.flags.append("zip64_locator_found")
-
-            # ZIP64 end of central directory record layout (56 bytes minimum):
-            # 0: sig (4), 4: record_size (8), 12: version_made (2),
-            # 14: version_needed (2), 16: disk_number (4), 20: cd_start_disk (4),
-            # 24: num_rec_this_disk (8), 32: total_rec (8), 40: cd_size (8),
-            # 48: cd_offset (8)
-            rec_raw = _read_at(path, rec_offset, 56)
-            if rec_raw is not None:
-                if _read_u32(rec_raw, 0) == 0x06064B50:
-                    rec_disk = _read_u32(rec_raw, 16)
-                    rec_cd_disk = _read_u32(rec_raw, 20)
-                    rec_entries_disk = _read_u64(rec_raw, 24)
-                    rec_entries_total = _read_u64(rec_raw, 32)
-                    cd_size_64 = _read_u64(rec_raw, 40)
-                    cd_offset_64 = _read_u64(rec_raw, 48)
-
-                    # Validate consistency
-                    geom.flags.append("zip64_record_valid")
-                    if rec_entries_disk == rec_entries_total:
-                        geom.flags.append("zip64_entry_count_valid")
-                        geom.entry_count = rec_entries_total
-                        geom.total_entries = rec_entries_total
-                    cd_size_final = cd_size_64
-                    rel_cd_offset = cd_offset_64
-
-                    # Validate disk fields
-                    if rec_disk == 0:
-                        geom.flags.append("zip64_disk_valid")
-                    if rec_cd_disk == 0:
-                        geom.flags.append("zip64_cd_disk_valid")
-
-                    geom.cd_size = cd_size_64
-                    geom.central_directory_size = cd_size_64
-
-                    # Absolute CD offset = rec_abs - cd_size (adjacent)
-                    abs_cd_offset = rec_offset - cd_size_64
+    if zip64 is not None:
+        geom.zip64_record_offset = zip64.record_offset
+        geom.entry_count = zip64.entries
+        geom.total_entries = zip64.entries
+        cd_size_final = zip64.central_directory_size
+        rel_cd_offset = zip64.central_directory_offset
+        geom.cd_size = cd_size_final
+        geom.central_directory_size = cd_size_final
+        abs_cd_offset = zip64.record_offset - cd_size_final
+        geom.flags.extend(
+            [
+                "zip64_record_found",
+                "zip64_locator_found",
+                "zip64_record_valid",
+                "zip64_entry_count_valid",
+                "zip64_disk_valid",
+                "zip64_cd_disk_valid",
+                "zip64_geometry_valid",
+                "zip64_classic_fields_consistent",
+                "zip64_locator_offset_valid",
+            ]
+        )
 
     empty_archive = (
-        not is_zip64
-        and disk == 0
-        and cd_start_disk == 0
-        and num_rec == 0
-        and total_rec == 0
-        and cd_size == 0
-        and cd_offset == 0
+        geom.entry_count == 0
+        and cd_size_final == 0
+        and (
+            (zip64 is not None and rel_cd_offset == 0)
+            or (zip64 is None and cd_offset == 0)
+        )
+        and disk in (0, 0xFFFF)
+        and cd_start_disk in (0, 0xFFFF)
     )
 
     if abs_cd_offset is None and empty_archive:
@@ -372,10 +391,10 @@ def _validate_eocd_at(path: str, file_size: int,
     geom.central_directory_offset = abs_cd_offset
 
     # Validate entry count bounds
-    if total_rec == 0:
+    if geom.entry_count == 0:
         if "empty_archive" not in geom.flags:
             geom.flags.append("empty_archive")
-    elif total_rec < 65536:
+    elif geom.entry_count < 65536:
         geom.flags.append("entry_count_reasonable")
     else:
         geom.flags.append("entry_count_large")
@@ -397,7 +416,13 @@ def _validate_eocd_at(path: str, file_size: int,
     if not empty_archive:
         # Validate first local header
         first_local_offset = _get_first_local_offset(
-            path, abs_cd_offset, file_size, total_rec, cd_offset, cd_size, eocd_offset
+            path,
+            abs_cd_offset,
+            file_size,
+            geom.entry_count,
+            rel_cd_offset,
+            cd_size_final,
+            eocd_offset,
         )
         if first_local_offset is None:
             logger.debug("Cannot determine first local header offset")
@@ -428,44 +453,93 @@ def _validate_eocd_at(path: str, file_size: int,
     return geom
 
 
-def _find_zip64_locator(path: str, file_size: int,
-                        eocd_offset: int) -> Optional[Tuple[int, bool]]:
-    """Find ZIP64 locator and record. Returns (record_offset, locator_found)."""
-    search_window = min(eocd_offset, 4096)
-    if search_window < 4:
+def _find_adjacent_zip64_geometry(
+    path: str,
+    eocd_offset: int,
+    *,
+    disk: int,
+    cd_start_disk: int,
+    num_rec: int,
+    total_rec: int,
+    cd_size: int,
+    cd_offset: int,
+) -> Optional[_Zip64Geometry]:
+    """Validate a ZIP64 record and locator immediately before an EOCD.
+
+    Steganographier-compatible files can retain usable classic EOCD values
+    while also carrying ZIP64 end records.  Accept that layout only when every
+    redundant field and relative offset describes the same single-disk ZIP.
+    """
+
+    locator_offset = eocd_offset - ZIP64_LOCATOR_SIZE
+    if locator_offset < ZIP64_RECORD_MIN_SIZE:
+        return None
+    locator = _read_at(path, locator_offset, ZIP64_LOCATOR_SIZE)
+    if locator is None or locator[:4] != SIG_ZIP64_LOCATOR:
         return None
 
-    chunk = _read_at(path, eocd_offset - search_window, search_window)
+    locator_disk = _read_u32(locator, 4)
+    relative_record_offset = _read_u64(locator, 8)
+    total_disks = _read_u32(locator, 16)
+    if locator_disk != 0 or total_disks != 1:
+        return None
+
+    search_start = max(0, locator_offset - ZIP64_RECORD_SEARCH_BYTES)
+    chunk = _read_at(path, search_start, locator_offset - search_start)
     if chunk is None:
         return None
 
-    loc_idx = chunk.rfind(SIG_ZIP64_LOCATOR)
-    locator_found = loc_idx != -1
+    record_index = chunk.rfind(SIG_ZIP64_RECORD)
+    while record_index != -1:
+        record_offset = search_start + record_index
+        record = _read_at(path, record_offset, ZIP64_RECORD_MIN_SIZE)
+        if record is not None:
+            record_size = _read_u64(record, 4)
+            record_end = record_offset + 12 + record_size
+            if record_size >= 44 and record_end == locator_offset:
+                record_disk = _read_u32(record, 16)
+                record_cd_disk = _read_u32(record, 20)
+                record_entries_disk = _read_u64(record, 24)
+                record_entries_total = _read_u64(record, 32)
+                record_cd_size = _read_u64(record, 40)
+                record_cd_offset = _read_u64(record, 48)
 
-    if locator_found:
-        loc_abs = eocd_offset - search_window + loc_idx
-        # Record before locator
-        rec_window = min(loc_abs, 2048)
-        if rec_window < 4:
-            return None
-        rec_chunk = _read_at(path, loc_abs - rec_window, rec_window)
-        if rec_chunk is None:
-            return None
-        rec_idx = rec_chunk.rfind(SIG_ZIP64_RECORD)
-        if rec_idx != -1:
-            return (loc_abs - rec_window + rec_idx, True)
-        return None
-
-    # Fallback: search for record directly
-    rec_window = min(eocd_offset, 2048)
-    if rec_window < 4:
-        return None
-    rec_chunk = _read_at(path, eocd_offset - rec_window, rec_window)
-    if rec_chunk is None:
-        return None
-    rec_idx = rec_chunk.rfind(SIG_ZIP64_RECORD)
-    if rec_idx != -1:
-        return (eocd_offset - rec_window + rec_idx, False)
+                classic_consistent = (
+                    disk in (0, 0xFFFF)
+                    and cd_start_disk in (0, 0xFFFF)
+                    and record_disk == 0
+                    and record_cd_disk == 0
+                    and record_entries_disk == record_entries_total
+                    and num_rec in (0xFFFF, record_entries_disk)
+                    and total_rec in (0xFFFF, record_entries_total)
+                    and cd_size in (0xFFFFFFFF, record_cd_size)
+                    and cd_offset in (0xFFFFFFFF, record_cd_offset)
+                )
+                archive_start = record_offset - relative_record_offset
+                absolute_cd_offset = archive_start + record_cd_offset
+                geometry_consistent = (
+                    archive_start >= 0
+                    and absolute_cd_offset >= archive_start
+                    and absolute_cd_offset + record_cd_size == record_offset
+                    and relative_record_offset
+                    == record_cd_offset + record_cd_size
+                    and (
+                        (record_entries_total == 0 and record_cd_size == 0)
+                        or (
+                            record_entries_total > 0
+                            and record_cd_size >= ZIP_CENTRAL_HEADER_SIZE
+                        )
+                    )
+                )
+                if classic_consistent and geometry_consistent:
+                    return _Zip64Geometry(
+                        record_offset,
+                        relative_record_offset,
+                        record_entries_total,
+                        record_cd_size,
+                        record_cd_offset,
+                    )
+        record_index = chunk.rfind(SIG_ZIP64_RECORD, 0, record_index)
     return None
 
 

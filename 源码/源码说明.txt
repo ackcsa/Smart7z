@@ -10,7 +10,9 @@ Smart 7z Ultra 1.0.0 源码版
 
 本次更新新增默认开启的 SteganographierGUI 非全读取兼容探测，支持
 普通 MP4 追加 ZIP、ZArchiver free 原子和 MKV ZIP 附件；同时包括
-三级互斥文件扫描菜单、深度扫描单轮流式预检与候选复用、非常驻扫描进度、
+非饱和经典字段 ZIP64 严格几何校验，以及深度扫描、直接添加和拖入对随机
+RAR/7z/ZIP 诱饵的优先识别；同时包括三级互斥文件扫描菜单、深度扫描通用
+回退的单轮流式预检与候选复用、非常驻扫描进度、
 任务详情高度调整和小包优先调度、密码提示布局恢复、旧密码本继承、
 普通 EXE 目录保护及高置信度 ZIP/7z SFX 例外，以及此前的关闭阶段
 单实例接管、完整加密清单复用、有界流式 SLT 解析、安全上限和空 stego
@@ -22,7 +24,7 @@ Smart 7z Ultra 1.0.0 源码版
 - 安装 7-Zip，或将 7z.exe 放在解压后的源码根目录。
 - 启动：python smart7z.py
 - 全量测试：python -m unittest discover -s tests -v
-- 最终源码验证结果：363/363 通过，真实 7-Zip 集成用例全部通过。
+- 最终源码验证结果：369/369 通过，真实 7-Zip 集成用例全部通过。
 - 构建：powershell -ExecutionPolicy Bypass -File .\build_release.ps1
 
 完整说明见源码包中的 README.txt 和 Smart7z-User-Manual.html。

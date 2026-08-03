@@ -197,6 +197,75 @@ class TestExecutorPasswordsAndMetrics(unittest.TestCase):
             self.assertEqual(state, JobState.STEGO_CANDIDATE_REVIEW)
             self.assertEqual(len(job.stego_candidates), 1)
 
+    def test_direct_scan_prefers_steganographier_candidate_over_decoys(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executor = self._executor(temp_dir)
+            job = Job(
+                path=os.path.join(temp_dir, "hidden.mp4"),
+                explicit_input=True,
+            )
+            compatible = ArchiveCandidate(
+                host_format="bmff",
+                embedded_format="zip",
+                start_offset=100,
+                end_offset=200,
+                confidence=Confidence.HIGH,
+                mode="steganographier_mp4_trailing",
+                validation_flags=["steganographier_compatible"],
+            )
+
+            with (
+                mock.patch(
+                    "steganographier_compat.find_steganographier_candidates",
+                    return_value=[compatible],
+                ) as compat_scan,
+                mock.patch(
+                    "stego_candidates.find_candidates",
+                    side_effect=AssertionError(
+                        "generic scan must not expose randomized decoys"
+                    ),
+                ),
+            ):
+                candidates = executor._find_stego_candidates(job)
+
+            self.assertEqual(candidates, [compatible])
+            compat_scan.assert_called_once_with(
+                job.path, cancel_check=executor._cancelled
+            )
+
+    def test_direct_scan_falls_back_when_file_is_not_steganographier_compatible(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executor = self._executor(temp_dir)
+            job = Job(
+                path=os.path.join(temp_dir, "unknown.bin"),
+                explicit_input=True,
+            )
+            generic = ArchiveCandidate(
+                embedded_format="7z",
+                start_offset=10,
+                end_offset=40,
+                confidence=Confidence.LOW,
+                mode="signature_only",
+            )
+
+            with (
+                mock.patch(
+                    "steganographier_compat.find_steganographier_candidates",
+                    return_value=[],
+                ) as compat_scan,
+                mock.patch(
+                    "stego_candidates.find_candidates",
+                    return_value=[generic],
+                ) as generic_scan,
+            ):
+                candidates = executor._find_stego_candidates(job)
+
+            self.assertEqual(candidates, [generic])
+            compat_scan.assert_called_once()
+            generic_scan.assert_called_once_with(
+                job.path, cancel_check=executor._cancelled
+            )
+
     def test_encrypted_extraction_skips_guaranteed_no_password_attempt(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             Path(temp_dir, "code.txt").write_text("file-password\n", encoding="utf-8")

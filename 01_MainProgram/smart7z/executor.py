@@ -939,8 +939,14 @@ class Executor:
 
     def _find_stego_candidates(self, job: Job) -> List[ArchiveCandidate]:
         try:
+            from steganographier_compat import find_steganographier_candidates
             from stego_candidates import find_candidates
 
+            compatible = find_steganographier_candidates(
+                job.path, cancel_check=self._cancelled
+            )
+            if compatible:
+                return compatible
             return find_candidates(job.path, cancel_check=self._cancelled)
         except (OSError, ValueError, EOFError):
             logger.exception("Structural candidate scan failed for task=%s", job.task_id)

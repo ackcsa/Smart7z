@@ -2098,33 +2098,42 @@ class Smart7zAppModern:
                                     current_number,
                                 )
 
-                            decision = classify_automatic_candidate(
-                                full,
-                                archive_exts,
-                                cancel_check=scan_cancelled,
-                                progress_cb=report_file_progress,
-                                allow_full_embedded_scan=deep,
-                            )
-                            if scan_cancelled():
-                                break
-                            candidates = list(decision.candidates)
-                            should_queue = decision.should_queue
-                            if compat and not should_queue:
+                            compatible_candidates = []
+                            if compat or deep:
                                 candidates = find_steganographier_candidates(
                                     full,
                                     cancel_check=scan_cancelled,
                                 )
-                                should_queue = bool(candidates)
-                            if (
-                                deep
-                                and decision.reason == "no_archive_structure"
-                            ):
-                                candidates = find_candidates(
+                                compatible_candidates = list(candidates)
+                            if scan_cancelled():
+                                break
+
+                            if compatible_candidates:
+                                candidates = compatible_candidates
+                                should_queue = True
+                            else:
+                                decision = classify_automatic_candidate(
                                     full,
+                                    archive_exts,
                                     cancel_check=scan_cancelled,
                                     progress_cb=report_file_progress,
+                                    allow_full_embedded_scan=deep,
                                 )
-                                should_queue = bool(candidates)
+                                if scan_cancelled():
+                                    break
+                                candidates = list(decision.candidates)
+                                should_queue = decision.should_queue
+                                if (
+                                    deep
+                                    and decision.reason
+                                    == "no_archive_structure"
+                                ):
+                                    candidates = find_candidates(
+                                        full,
+                                        cancel_check=scan_cancelled,
+                                        progress_cb=report_file_progress,
+                                    )
+                                    should_queue = bool(candidates)
                             if scan_cancelled():
                                 break
                             if should_queue:

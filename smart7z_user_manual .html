@@ -624,7 +624,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <strong>重复文件和分卷：</strong>同一个压缩包不会重复加入队列。同一组分卷会合并为一个任务，从首卷开始处理，避免重复解压或重复清理。
         </div>
         <div class="notice info">
-          <strong>扫描模式影响哪些文件：</strong>通过“添加文件”、拖拽或命令行直接指定的文件，在 7-Zip 打开失败后会自动检查内部结构，不需要切换扫描模式。目录扫描默认使用“仅兼容隐写者模式（非全读取）”；选择“深度扫描模式（全文件读取）”后，会对其他文件做一次流式结构预检，只把确实发现 ZIP、7z 或 RAR 候选的文件加入队列，并把候选直接交给后续任务复用。三种模式始终三选一，嵌套任务不会进行深度结构扫描。
+          <strong>扫描模式影响哪些文件：</strong>通过“添加文件”、拖拽或命令行直接指定的文件，在 7-Zip 打开失败后会先用隐写者兼容探测确认真实 ZIP 边界，命中后不会再把随机尾缀中的 RAR/7z/ZIP 诱饵列为候选；未命中才进入通用结构扫描。目录扫描默认使用“仅兼容隐写者模式（非全读取）”；选择“深度扫描模式（全文件读取）”后，也会先做同一兼容探测，再对其他文件做一次流式结构预检。三种模式始终三选一，嵌套任务不会进行深度结构扫描。
         </div>
       </section>
 
@@ -677,7 +677,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
         <section id="options-deep">
           <h3>扫描模式</h3>
           <p>菜单栏“文件扫描模式”包含三项，并以对钩表示当前唯一选择。默认的“仅兼容隐写者模式（非全读取）”只在 BMFF 的 <code>ftyp</code>/<code>free</code> 原子、MP4 文件尾以及 Matroska 的 EBML/SeekHead/Attachments 元数据处定位 SteganographierGUI ZIP，不顺序读取视频主体。</p>
-          <p>“深度扫描模式（全文件读取）”适用于 JPEG、未知容器或需要查找任意位置候选的目录，会对文件做一次流式结构预检，同时查找 ZIP、7z 和 RAR 候选。“普通模式”关闭这两类特殊目录扫描，只保留常规压缩格式与轻量内容分类。直接添加、拖入或通过命令行指定的文件不受目录扫描模式限制；嵌套任务始终不会进行深度结构扫描。</p>
+          <p>“深度扫描模式（全文件读取）”适用于 JPEG、未知容器或需要查找任意位置候选的目录。它先用非全读取兼容探测识别 SteganographierGUI 的结构和诱饵尾缀；命中时直接复用精确 ZIP 候选，未命中才对文件做流式结构预检，同时查找 ZIP、7z 和 RAR 候选。“普通模式”关闭这两类特殊目录扫描，只保留常规压缩格式与轻量内容分类。直接添加、拖入或通过命令行指定的文件也会优先识别隐写者结构；嵌套任务始终不会进行深度结构扫描。</p>
         </section>
         <section id="options-nested">
           <h3>嵌套解压</h3>
@@ -792,10 +792,10 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <li>程序先轻量读取文件头和文件尾。常见 7z、RAR、CAB、WIM、TAR、ISO、DMG、VHD 和压缩数据流已有明确结构证据时，不再扩大边缘读取范围；ZIP 仍会继续核对中央目录。</li>
           <li>菜单栏“文件扫描模式”默认勾选“仅兼容隐写者模式（非全读取）”。它只识别 SteganographierGUI 的普通 MP4 追加 ZIP、<code>mp4(zarchiver)</code> free 原子 ZIP 和 MKV 附件 ZIP。</li>
           <li>兼容模式跳读 BMFF 原子或 Matroska EBML/SeekHead 元数据，只定点读取 ZIP 尾部、中央目录和被引用的本地文件头；视频主体和大型 Cluster 按已知长度直接跳过。</li>
-          <li>选择“深度扫描模式（全文件读取）”时，兼容模式和普通模式会取消选择。无法通过轻量边缘读取识别的文件会用同一轮流式读取同时查找 ZIP、7z、RAR 候选；扫描结果随任务入队并被执行器复用。</li>
+          <li>选择“深度扫描模式（全文件读取）”时，兼容模式和普通模式会取消选择，但程序仍先执行隐写者非全读取探测。命中时直接使用真实 ZIP 边界并忽略随机尾缀诱饵；未命中的文件才用同一轮流式读取查找 ZIP、7z、RAR 候选。</li>
           <li>Office 文档、APK、JAR、MSI、PDF、媒体和可执行文件即使内部带有压缩结构，也会按其实际文件类型处理，避免批量误解压。</li>
           <li>复合扩展名如 <code>.tar.gz</code>、<code>.tar.xz</code> 会作为压缩包候选。</li>
-          <li>直接添加的文件不经过这层筛选，因此同一个文件从不同入口加入时，处理结果可能不同。</li>
+          <li>直接添加或拖入的文件不经过目录语义筛选，但在 7-Zip 打开失败后同样优先识别隐写者结构和诱饵尾缀，未命中才进入通用候选扫描。</li>
         </ul>
         <div class="notice info">
           <strong>默认不会全读媒体文件：</strong>兼容模式只对 SteganographierGUI 支持的 MP4/MKV 布局做跳读定位。需要寻找 JPEG、未知布局或任意位置候选时，改用“深度扫描模式（全文件读取）”；扫描过程中可以取消。
@@ -819,7 +819,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
 
       <section id="workflow-stego">
         <h2>伪装文件与内嵌 ZIP</h2>
-        <p>Smart7z 可以快速定位 SteganographierGUI 创建或兼容的 MP4/MKV 隐写 ZIP，也可以在深度扫描或直接添加时查找其他完整 ZIP。找到多个候选时，任务会进入“隐写候选”状态供选择。</p>
+        <p>Smart7z 可以快速定位 SteganographierGUI 创建或兼容的 MP4/MKV 隐写 ZIP，并识别其 ZIP64 记录、两组诱饵签名、随机区和空 <code>mdat</code> 尾缀。兼容结构只返回真实 ZIP；深度扫描、直接添加和拖入未命中兼容结构时，才继续查找其他完整 ZIP。找到多个通用候选时，任务会进入“隐写候选”状态供选择。</p>
         <h3>它能识别什么</h3>
         <div class="three-col">
           <div class="mini-card"><h4>普通 MP4 追加 ZIP</h4><p>兼容 ZIP 直接结束于文件尾，以及隐写者当前版本的两组诱饵签名、随机区和空 <code>mdat</code> 尾缀。</p></div>
@@ -1093,8 +1093,8 @@ python smart7z.py -- --queue</code></pre>
             <tr><td>7-Zip 调用</td><td>统一处理清单读取、解压、进度解析、警告、取消和返回码分类。</td><td><code>sevenzip.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>分卷识别</td><td>识别数字卷、RAR part、经典 RAR、分卷 ZIP、ARJ、SWM。</td><td><code>discovery.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>自动分类</td><td>目录扫描时根据文件内容判断是否加入队列，并排除普通文档、程序和媒体；只有所选扫描模式确认的内嵌 ZIP 才会覆盖媒体语义。</td><td><code>archive_classifier.py</code></td><td><span class="tag ok">已实现</span></td></tr>
-            <tr><td>隐写者兼容探测</td><td>默认以 BMFF/EBML 跳读方式识别 SteganographierGUI 普通 MP4、ZArchiver free 原子和 MKV ZIP 附件，不顺序读取媒体主体。</td><td><code>steganographier_compat.py</code></td><td><span class="tag ok">已实现</span></td></tr>
-            <tr><td>内嵌 ZIP 候选</td><td>提供 ZIP/ZIP64 精确结构校验、限定区间定点校验和深度扫描候选定位，并计算置信度。</td><td><code>stego_candidates.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>隐写者兼容探测</td><td>以 BMFF/EBML 跳读方式识别 SteganographierGUI 普通 MP4、ZArchiver free 原子和 MKV ZIP 附件；深度扫描和直接添加也优先复用此探测，避免暴露随机尾缀诱饵。</td><td><code>steganographier_compat.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>内嵌 ZIP 候选</td><td>提供 ZIP/ZIP64 精确结构校验、限定区间定点校验和深度扫描候选定位；ZIP64 会核对记录长度、定位器、磁盘号、条目数、中央目录及相对偏移。</td><td><code>stego_candidates.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>路径安全</td><td>拒绝穿越、绝对路径、设备名、ADS、控制字符、链接和重解析点。</td><td><code>path_safety.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>串行调度</td><td>使用一个工作线程，从当前待处理任务中按源包大小升序选择；大小相同时保持入队顺序，密码或候选确认后的恢复任务优先。支持手动开始、取消和去重。</td><td><code>scheduler.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>校验后输出</td><td>先解压到临时目录，核对文件、目录、数量和大小；跨盘复制时同步核对成员 CRC32；文件写入磁盘后再移到最终位置。</td><td><code>executor.py</code>, <code>windows_adapters.py</code></td><td><span class="tag ok">已实现</span></td></tr>
@@ -1211,7 +1211,7 @@ python smart7z.py -- --queue</code></pre>
 
       <section id="test-reference">
         <h2>测试</h2>
-        <p>项目包含单元测试和使用本机 7-Zip 的集成测试，覆盖界面生命周期、扫描模式、SteganographierGUI 三类布局与非全读取预算、右键菜单注册、单实例参数转发、配置、分卷识别、路径安全、7-Zip 输出解析、运行时安全、内嵌 ZIP 候选、输出提交和源文件恢复。</p>
+        <p>项目包含单元测试和使用本机 7-Zip 的集成测试，覆盖界面生命周期、扫描模式、SteganographierGUI 三类布局、随机诱饵尾缀、非饱和经典字段 ZIP64 与非全读取预算、右键菜单注册、单实例参数转发、配置、分卷识别、路径安全、7-Zip 输出解析、运行时安全、内嵌 ZIP 候选、输出提交和源文件恢复。</p>
         <table>
           <thead><tr><th>资产</th><th>位置</th><th>说明</th></tr></thead>
           <tbody>

@@ -1,12 +1,14 @@
 import builtins
 import io
 import os
+import struct
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
 
+import stego_candidates
 import steganographier_compat
 
 
@@ -15,6 +17,37 @@ def _zip_bytes(name="payload.txt", content=b"payload"):
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(name, content)
     return output.getvalue()
+
+
+def _zip64_bytes(zip_data, *, locator_offset_delta=0):
+    eocd_offset = zip_data.rfind(stego_candidates.SIG_EOCD)
+    if eocd_offset < 0 or eocd_offset + 22 != len(zip_data):
+        raise ValueError("test ZIP must end with an uncommented EOCD")
+    eocd = zip_data[eocd_offset:]
+    disk, cd_disk, entries_disk, entries, cd_size, cd_offset = (
+        struct.unpack_from("<HHHHII", eocd, 4)
+    )
+    record = struct.pack(
+        "<4sQHHIIQQQQ",
+        stego_candidates.SIG_ZIP64_RECORD,
+        44,
+        45,
+        45,
+        disk,
+        cd_disk,
+        entries_disk,
+        entries,
+        cd_size,
+        cd_offset,
+    )
+    locator = struct.pack(
+        "<4sIQI",
+        stego_candidates.SIG_ZIP64_LOCATOR,
+        0,
+        eocd_offset + locator_offset_delta,
+        1,
+    )
+    return zip_data[:eocd_offset] + record + locator + eocd
 
 
 def _bmff_box(box_type, payload=b""):
@@ -120,6 +153,51 @@ class TestSteganographierCompat(unittest.TestCase):
         self.assertIn(
             "steganographier_randomized_suffix", candidate.validation_flags
         )
+
+    def test_trailing_mp4_accepts_consistent_unsaturated_zip64(self):
+        zip_data = _zip64_bytes(_zip_bytes(content=b"zip64-payload"))
+        suffix = (
+            b"Rar!\x1a\x07\x01\x00"
+            + b"A" * (6 * 1024)
+            + b"7z\xbc\xaf\x27\x1c"
+            + b"B" * (8 * 1024)
+            + steganographier_compat.EMPTY_MDAT
+        )
+        prefix = _bmff_box(b"ftyp", b"isom") + _bmff_box(
+            b"mdat", b"video-data"
+        )
+        content = prefix + zip_data + suffix
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "hidden-zip64.mp4"
+            path.write_bytes(content)
+            candidates = steganographier_compat.find_steganographier_candidates(
+                str(path)
+            )
+
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual(candidate.start_offset, len(prefix))
+        self.assertEqual(candidate.end_offset, len(prefix) + len(zip_data))
+        self.assertEqual(
+            content[candidate.start_offset : candidate.end_offset], zip_data
+        )
+        self.assertIn("zip64_geometry_valid", candidate.validation_flags)
+        self.assertIn(
+            "steganographier_randomized_suffix", candidate.validation_flags
+        )
+
+    def test_inconsistent_unsaturated_zip64_is_rejected(self):
+        zip_data = _zip64_bytes(_zip_bytes(), locator_offset_delta=1)
+        prefix = _bmff_box(b"ftyp", b"isom")
+        content = prefix + zip_data
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "invalid-zip64.mp4"
+            path.write_bytes(content)
+            candidates = stego_candidates.find_exact_zip_candidates_in_span(
+                str(path), len(prefix), len(content)
+            )
+
+        self.assertEqual(candidates, [])
 
     def test_classic_mp4_plus_zip_at_eof_is_compatible(self):
         zip_data = _zip_bytes()
