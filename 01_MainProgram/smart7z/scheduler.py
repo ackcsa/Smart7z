@@ -1,4 +1,4 @@
-"""FIFO serial scheduler: one worker, one 7-Zip slot, password deferral."""
+"""Size-priority serial scheduler with password and candidate deferral."""
 
 from __future__ import annotations
 
@@ -105,6 +105,8 @@ class Scheduler:
         self._thread: Optional[threading.Thread] = None
         self._tasks_submitted = 0
         self._tasks_finished = 0
+        self._queue_sequence: Dict[str, int] = {}
+        self._next_queue_sequence = 0
         self._source_keys: Dict[str, str] = {}
         self._terminal_ids: Set[str] = set()
         self._cancel_requested: Set[str] = set()
@@ -253,6 +255,7 @@ class Scheduler:
                     else:
                         job.record_state(JobState.QUEUED)
                         self._jobs[job.task_id] = job
+                        self._remember_queue_sequence_locked(job)
                         self._source_keys[source_key] = job.task_id
                         self._job_batches[job.task_id] = batch_id
                         self._tasks_submitted += 1
@@ -261,6 +264,7 @@ class Scheduler:
                 elif duplicate is None:
                     job.record_state(JobState.QUEUED)
                     self._jobs[job.task_id] = job
+                    self._remember_queue_sequence_locked(job)
                     self._source_keys[source_key] = job.task_id
                     self._job_batches[job.task_id] = batch_id
                     self._tasks_submitted += 1
@@ -429,6 +433,7 @@ class Scheduler:
                     continue
                 removed.append(tid)
                 del self._jobs[tid]
+                self._queue_sequence.pop(tid, None)
                 self._terminal_ids.discard(tid)
                 self._cancel_requested.discard(tid)
                 self._job_batches.pop(tid, None)
@@ -533,7 +538,7 @@ class Scheduler:
             while self._running and not self.processing_enabled.wait(timeout=0.2):
                 continue
             try:
-                job = self.task_queue.get(timeout=0.5)
+                job = self._take_next_queued_item(timeout=0.5)
             except queue.Empty:
                 self._disable_processing_when_idle()
                 continue
@@ -645,6 +650,65 @@ class Scheduler:
                     self.current_job = None
             self.task_queue.task_done()
             self._disable_processing_when_idle()
+
+    def _take_next_queued_item(self, timeout: float):
+        """Take the smallest queued archive without changing active work."""
+
+        first = self.task_queue.get(timeout=timeout)
+        with self._lock:
+            available = [first]
+            while True:
+                try:
+                    available.append(self.task_queue.get_nowait())
+                except queue.Empty:
+                    break
+
+            selected_index = min(
+                range(len(available)),
+                key=lambda index: self._queue_item_priority(
+                    available[index]
+                ),
+            )
+            selected = available[selected_index]
+            for index, item in enumerate(available):
+                if index == selected_index:
+                    continue
+                self.task_queue.task_done()
+                self.task_queue.put(item)
+            return selected
+
+    def _queue_item_priority(self, item) -> Tuple[int, int, int]:
+        if item is _STOP:
+            return (2, 0, 0)
+        interactive_resume = bool(
+            item.attempt_count > 0 or item.stego_selection_pending
+        )
+        return (
+            0 if interactive_resume else 1,
+            self._job_size_bytes(item),
+            self._queue_sequence.get(item.task_id, 0),
+        )
+
+    def _remember_queue_sequence_locked(self, job: Job) -> None:
+        if job.task_id in self._queue_sequence:
+            return
+        self._queue_sequence[job.task_id] = self._next_queue_sequence
+        self._next_queue_sequence += 1
+
+    @staticmethod
+    def _job_size_bytes(job: Job) -> int:
+        volumes = (
+            list(job.archive_set.volumes)
+            if job.archive_set and job.archive_set.volumes
+            else [job.original_path or job.path]
+        )
+        total = 0
+        try:
+            for path in volumes:
+                total += max(0, int(os.path.getsize(path)))
+        except OSError:
+            return (1 << 63) - 1
+        return total
 
     def _disable_processing_when_idle(self) -> None:
         """Close the per-batch processing latch once no work can resume it."""

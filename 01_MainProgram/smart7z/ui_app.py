@@ -34,6 +34,8 @@ from config import (
 from discovery import is_multipart_child, logical_archive_key
 from models import CleanupPolicy, Job, JobState, TERMINAL_STATES
 from scheduler import Scheduler
+from stego_candidates import find_candidates
+from steganographier_compat import find_steganographier_candidates
 from user_messages import (
     CLEANUP_NOTICE_CODES,
     format_user_message,
@@ -95,7 +97,7 @@ TREE_COLUMNS = (
     ("progress", "进度", 60),
     ("attempts", "尝试", 50),
     ("policy", "清理策略", 80),
-    ("retention", "源文件", 120),
+    ("retention", "源包处理", 120),
 )
 
 # State sorting follows operational urgency instead of enum or display text.
@@ -155,6 +157,7 @@ INSTANCE_STARTUP_WAIT_SECONDS = 15.0
 INSTANCE_STARTUP_POLL_SECONDS = 0.1
 PENDING_INTAKE_LIMIT = 4096
 CONTEXT_AUTO_CLOSE_GRACE_MS = 1500
+SCAN_PROGRESS_MIN_INTERVAL_SECONDS = 0.08
 
 EXTERNAL_CLEANUP_POLICIES = frozenset({
     CleanupPolicy.KEEP.value,
@@ -881,6 +884,8 @@ class Smart7zAppModern:
         self._scan_threads = set()
         self._scan_cancel = threading.Event()
         self._scan_generation = 0
+        self._scan_progress_generation = -1
+        self._scan_autostart_generations = set()
         self._pending_intake = []
         self._pending_intake_keys = set()
         self._closing = False
@@ -932,7 +937,14 @@ class Smart7zAppModern:
         self.var_extract_to_source = tk.BooleanVar(value=self.config.get("extract_to_source", True))
         self.var_wait_space = tk.BooleanVar(value=self.config.get("wait_disk_space", True))
         self.var_staging_mode = tk.BooleanVar(value=(self.config.get("extract_mode", "staging") == "staging"))
-        self.var_deep_scan = tk.BooleanVar(value=self.config.get("deep_scan", False))
+        deep_scan = bool(self.config.get("deep_scan", False))
+        self.var_deep_scan = tk.BooleanVar(value=deep_scan)
+        self.var_steganographier_compat = tk.BooleanVar(
+            value=(
+                self.config.get("steganographier_compat_mode", True)
+                and not deep_scan
+            )
+        )
         self.var_nested = tk.BooleanVar(value=self.config.get("nested_extraction", False))
         self.var_cleanup_policy = tk.StringVar(value=self.config.get("cleanup_policy", "keep"))
 
@@ -941,10 +953,35 @@ class Smart7zAppModern:
         self._setup_path_row()
         self._setup_queue_actions()
         self._setup_prompt_area()
-        self._setup_job_table()
-        self._setup_progress()
-        self._setup_details_panel()
+        self._setup_work_area()
+
+    def _setup_work_area(self):
+        self.work_pane = tk.PanedWindow(
+            self.root,
+            orient=tk.VERTICAL,
+            sashrelief=tk.RAISED,
+            sashwidth=6,
+            showhandle=True,
+            opaqueresize=True,
+        )
+        self.work_pane.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        self.queue_panel = tk.Frame(self.work_pane)
+        self._setup_job_table(self.queue_panel)
+        self._setup_progress(self.queue_panel)
+        self._setup_details_panel(self.work_pane)
         self._setup_log()
+
+        self.work_pane.add(
+            self.queue_panel,
+            minsize=140,
+            stretch="always",
+        )
+        self.work_pane.add(
+            self.inspector_tabs,
+            minsize=80,
+            stretch="never",
+        )
 
     def _setup_toolbar(self):
         self.toolbar_area = tk.Frame(self.root)
@@ -980,17 +1017,22 @@ class Smart7zAppModern:
         )
         self.extract_options_frame.pack(fill=tk.X, padx=5, pady=(0, 4))
         self.extract_option_controls = []
-        for label, variable in (
-            ("解压到原目录", self.var_extract_to_source),
-            ("空间等待", self.var_wait_space),
-            ("暂存模式", self.var_staging_mode),
-            ("深度扫描", self.var_deep_scan),
-            ("嵌套解压", self.var_nested),
+        for label, variable, command in (
+            ("解压到原目录", self.var_extract_to_source, None),
+            ("空间等待", self.var_wait_space, None),
+            ("暂存模式", self.var_staging_mode, None),
+            (
+                "深度扫描模式（全文件读取）",
+                self.var_deep_scan,
+                self._on_deep_scan_change,
+            ),
+            ("嵌套解压", self.var_nested, None),
         ):
             control = tk.Checkbutton(
                 self.extract_options_frame,
                 text=label,
                 variable=variable,
+                command=command,
             )
             control.pack(side=tk.LEFT)
             self.extract_option_controls.append(control)
@@ -1083,17 +1125,14 @@ class Smart7zAppModern:
         self.btn_clear_finished.pack(side=tk.LEFT, padx=5)
 
     def _setup_prompt_area(self):
-        # Keep dynamic prompts ahead of the expandable job table in the root
-        # pack order.  Re-packing a root child after the log would otherwise
-        # make Tk clip the prompt entirely at the supported 800x600 minimum.
+        # The host is packed only while a password or candidate prompt exists.
         self.prompt_host = tk.Frame(self.root)
-        self.prompt_host.pack(fill=tk.X)
         self._setup_password_prompt()
         self._setup_stego_prompt()
 
-    def _setup_job_table(self):
-        frame = tk.Frame(self.root)
-        frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    def _setup_job_table(self, parent):
+        frame = tk.Frame(parent)
+        frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         cols = tuple(column for column, _text, _width in TREE_COLUMNS)
         self.tree = ttk.Treeview(
             frame,
@@ -1102,7 +1141,7 @@ class Smart7zAppModern:
             selectmode="extended",
             height=5,
         )
-        self._sort_column = None
+        self._sort_column = "size"
         self._sort_descending = False
         for col, text, width in TREE_COLUMNS:
             self.tree.heading(
@@ -1116,10 +1155,33 @@ class Smart7zAppModern:
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scr.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.bind("<<TreeviewSelect>>", self._on_select_job)
+        self._update_tree_headings()
 
-    def _setup_progress(self):
-        self.progress_frame = tk.Frame(self.root)
-        self.progress_frame.pack(fill=tk.X, padx=5, pady=(2, 5))
+    def _setup_progress(self, parent):
+        self.scan_progress_frame = tk.Frame(parent)
+        self.scan_progress_label = tk.Label(
+            self.scan_progress_frame,
+            text="扫描文件",
+            width=34,
+            anchor=tk.W,
+        )
+        self.scan_progress_label.pack(side=tk.LEFT)
+        self.scan_progress = ttk.Progressbar(
+            self.scan_progress_frame,
+            orient=tk.HORIZONTAL,
+            mode="determinate",
+            maximum=100,
+        )
+        self.scan_progress.pack(
+            side=tk.LEFT,
+            fill=tk.X,
+            expand=True,
+            padx=(5, 0),
+        )
+        self.scan_progress_frame.pack_forget()
+
+        self.progress_frame = tk.Frame(parent)
+        self.progress_frame.pack(fill=tk.X, pady=(2, 0))
         tk.Label(self.progress_frame, text="当前").pack(side=tk.LEFT)
         self.file_progress = ttk.Progressbar(
             self.progress_frame,
@@ -1181,8 +1243,8 @@ class Smart7zAppModern:
         tk.Button(self.stego_frame, text="跳过", command=self._skip_stego).pack(side=tk.LEFT, padx=5)
         self.stego_frame.pack_forget()
 
-    def _setup_details_panel(self):
-        self.inspector_tabs = ttk.Notebook(self.root)
+    def _setup_details_panel(self, parent):
+        self.inspector_tabs = ttk.Notebook(parent)
         self.details_frame = tk.Frame(self.inspector_tabs)
         self.details_text = scrolledtext.ScrolledText(
             self.details_frame,
@@ -1212,7 +1274,6 @@ class Smart7zAppModern:
         )
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.inspector_tabs.add(self.log_frame, text="运行日志")
-        self.inspector_tabs.pack(fill=tk.BOTH, padx=5, pady=(0, 5))
 
     def _setup_menu(self):
         self.menubar = tk.Menu(self.root)
@@ -1226,7 +1287,20 @@ class Smart7zAppModern:
         self.menubar.add_cascade(
             label="右键菜单", menu=self.context_menu_menu
         )
+        self.menubar.add_checkbutton(
+            label="仅兼容隐写者模式（非全读取）",
+            variable=self.var_steganographier_compat,
+            command=self._on_steganographier_compat_change,
+        )
         self.root.config(menu=self.menubar)
+
+    def _on_steganographier_compat_change(self):
+        if self.var_steganographier_compat.get():
+            self.var_deep_scan.set(False)
+
+    def _on_deep_scan_change(self):
+        if self.var_deep_scan.get():
+            self.var_steganographier_compat.set(False)
 
     def _setup_dnd(self):
         if not DND_AVAILABLE:
@@ -1604,24 +1678,32 @@ class Smart7zAppModern:
         self.pwd_entry.delete(0, tk.END)
         self.pwd_entry.focus_set()
         self.pwd_frame.pack(fill=tk.X, padx=5, pady=5)
+        self._sync_prompt_host_visibility()
 
     def _submit_password(self):
-        if self.current_pwd_job and self.scheduler:
-            self.scheduler.submit_password_response(self.current_pwd_job, self.pwd_entry.get())
-            self.current_pwd_job = None
+        job = self.current_pwd_job
+        password = self.pwd_entry.get()
+        self.current_pwd_job = None
+        self.pwd_entry.delete(0, tk.END)
         self.pwd_frame.pack_forget()
+        if job and self.scheduler:
+            self.scheduler.submit_password_response(job, password)
         self._show_next_password_prompt()
 
     def _skip_password(self):
-        if self.current_pwd_job and self.scheduler:
-            self.scheduler.skip_password_job(self.current_pwd_job)
-            self.current_pwd_job = None
+        job = self.current_pwd_job
+        self.current_pwd_job = None
+        self.pwd_entry.delete(0, tk.END)
         self.pwd_frame.pack_forget()
+        if job and self.scheduler:
+            self.scheduler.skip_password_job(job)
         self._show_next_password_prompt()
 
     def _show_next_password_prompt(self):
         if self.current_pwd_job is None and self.pending_pwd_jobs:
             self._show_password_prompt(self.pending_pwd_jobs.pop(0))
+        else:
+            self._sync_prompt_host_visibility()
 
     def _show_stego_prompt(self, job):
         if self.current_stego_job and self.current_stego_job.task_id != job.task_id:
@@ -1633,28 +1715,44 @@ class Smart7zAppModern:
         for i, c in enumerate(job.stego_candidates):
             self.stego_list.insert(tk.END, f"[{i}] {c.embedded_format} offset={c.start_offset}-{c.end_offset} size={c.size} conf={c.confidence.value} mode={c.mode}")
         self.stego_frame.pack(fill=tk.X, padx=5, pady=5)
+        self._sync_prompt_host_visibility()
 
     def _submit_stego(self):
-        if not self.current_stego_job or not self.scheduler:
+        job = self.current_stego_job
+        self.current_stego_job = None
+        if not job:
             self.stego_frame.pack_forget()
+            self._sync_prompt_host_visibility()
             return
         sel = self.stego_list.curselection()
         idx = int(sel[0]) if sel else 0
-        self.scheduler.submit_stego_selection(self.current_stego_job, idx)
-        self.current_stego_job = None
         self.stego_frame.pack_forget()
+        if self.scheduler:
+            self.scheduler.submit_stego_selection(job, idx)
         self._show_next_stego_prompt()
 
     def _skip_stego(self):
-        if self.current_stego_job and self.scheduler:
-            self.scheduler.submit_stego_selection(self.current_stego_job, None)
-            self.current_stego_job = None
+        job = self.current_stego_job
+        self.current_stego_job = None
         self.stego_frame.pack_forget()
+        if job and self.scheduler:
+            self.scheduler.submit_stego_selection(job, None)
         self._show_next_stego_prompt()
 
     def _show_next_stego_prompt(self):
         if self.current_stego_job is None and self.pending_stego_jobs:
             self._show_stego_prompt(self.pending_stego_jobs.pop(0))
+        else:
+            self._sync_prompt_host_visibility()
+
+    def _sync_prompt_host_visibility(self):
+        if self.current_pwd_job is not None or self.current_stego_job is not None:
+            self.prompt_host.pack(
+                fill=tk.X,
+                before=self.work_pane,
+            )
+        else:
+            self.prompt_host.pack_forget()
 
     def _dismiss_prompts_for_job(self, job):
         task_id = job.task_id
@@ -1668,12 +1766,14 @@ class Smart7zAppModern:
         ]
         if self.current_pwd_job and self.current_pwd_job.task_id == task_id:
             self.current_pwd_job = None
+            self.pwd_entry.delete(0, tk.END)
             self.pwd_frame.pack_forget()
             self._show_next_password_prompt()
         if self.current_stego_job and self.current_stego_job.task_id == task_id:
             self.current_stego_job = None
             self.stego_frame.pack_forget()
             self._show_next_stego_prompt()
+        self._sync_prompt_host_visibility()
 
     def _on_select_job(self, event):
         sel = self.tree.selection()
@@ -1713,6 +1813,9 @@ class Smart7zAppModern:
         if config_snapshot is None:
             config_snapshot = dict(self.config)
             config_snapshot["deep_scan"] = bool(self.var_deep_scan.get())
+            config_snapshot["steganographier_compat_mode"] = bool(
+                self.var_steganographier_compat.get()
+            )
             config_snapshot["cleanup_policy"] = self.var_cleanup_policy.get()
         else:
             config_snapshot = dict(config_snapshot)
@@ -1744,6 +1847,52 @@ class Smart7zAppModern:
             "scan", roots, auto_start, False, config_snapshot
         )
 
+    def _show_scan_progress(self, generation: int) -> None:
+        self._scan_progress_generation = generation
+        self.scan_progress["value"] = 0
+        self.scan_progress_label.config(text="扫描文件: 正在准备")
+        self.scan_progress_frame.pack(
+            fill=tk.X,
+            pady=(0, 2),
+            before=self.progress_frame,
+        )
+
+    def _update_scan_progress(
+        self,
+        generation: int,
+        scanned_count: int,
+        found_count: int,
+        path: str,
+        progress: int,
+    ) -> None:
+        if (
+            generation != self._scan_generation
+            or generation != self._scan_progress_generation
+            or self._closing
+        ):
+            return
+        name = os.path.basename(path) or path
+        if len(name) > 42:
+            name = "..." + name[-39:]
+        self.scan_progress_label.config(
+            text=(
+                f"扫描文件 {max(1, scanned_count)}，"
+                f"已发现 {found_count}: {name}"
+            )
+        )
+        self.scan_progress["value"] = max(0, min(100, int(progress)))
+
+    def _hide_scan_progress(self, generation: Optional[int] = None) -> None:
+        if (
+            generation is not None
+            and generation != self._scan_progress_generation
+        ):
+            return
+        self._scan_progress_generation = -1
+        self.scan_progress["value"] = 0
+        self.scan_progress_label.config(text="扫描文件")
+        self.scan_progress_frame.pack_forget()
+
     def _launch_background_scan(
         self, roots, auto_start=False, config_snapshot=None
     ) -> bool:
@@ -1752,6 +1901,9 @@ class Smart7zAppModern:
         generation = self._scan_generation
         scan_config = dict(config_snapshot or self.config)
         deep = bool(scan_config.get("deep_scan", False))
+        compat = bool(
+            scan_config.get("steganographier_compat_mode", True)
+        ) and not deep
 
         def scan_cancelled() -> bool:
             return bool(
@@ -1762,7 +1914,50 @@ class Smart7zAppModern:
 
         def worker():
             count = 0
+            scanned_count = 0
             failure = None
+            last_progress_time = 0.0
+            last_progress_path = ""
+            last_progress_value = -1
+
+            def post_scan_progress(
+                path: str,
+                progress: int,
+                display_count: int,
+                *,
+                force: bool = False,
+            ) -> None:
+                nonlocal last_progress_path
+                nonlocal last_progress_time
+                nonlocal last_progress_value
+                if scan_cancelled():
+                    return
+                value = max(0, min(100, int(progress)))
+                now = time.monotonic()
+                same_file = path == last_progress_path
+                meaningful_step = same_file and abs(
+                    value - last_progress_value
+                ) >= 5
+                if (
+                    not force
+                    and now - last_progress_time
+                    < SCAN_PROGRESS_MIN_INTERVAL_SECONDS
+                    and not meaningful_step
+                ):
+                    return
+                if not self._post_to_tk(
+                    self._update_scan_progress,
+                    generation,
+                    display_count,
+                    count,
+                    path,
+                    value,
+                ):
+                    return
+                last_progress_path = path
+                last_progress_time = now
+                last_progress_value = value
+
             try:
                 archive_exts = set(ARCHIVE_EXTS)
                 if self.scheduler:
@@ -1798,31 +1993,83 @@ class Smart7zAppModern:
                             full = os.path.join(root, f)
                             if is_multipart_child(full):
                                 continue
+
+                            current_number = scanned_count + 1
+                            post_scan_progress(full, 0, current_number)
+
+                            def report_file_progress(
+                                completed_bytes: int,
+                                total_bytes: int,
+                            ) -> None:
+                                if total_bytes <= 0:
+                                    value = 100
+                                else:
+                                    value = int(
+                                        (completed_bytes / total_bytes) * 100
+                                    )
+                                post_scan_progress(
+                                    full,
+                                    value,
+                                    current_number,
+                                )
+
                             decision = classify_automatic_candidate(
                                 full,
                                 archive_exts,
                                 cancel_check=scan_cancelled,
+                                progress_cb=report_file_progress,
+                                allow_full_embedded_scan=deep,
                             )
                             if scan_cancelled():
                                 break
-                            should_queue = decision.should_queue or (
-                                deep and decision.reason == "no_archive_structure"
-                            )
-                            if not should_queue:
-                                continue
-                            if not self._post_to_tk(
-                                self._enqueue_scanned_path,
-                                generation,
-                                full,
-                                auto_start,
-                                scan_config,
+                            candidates = list(decision.candidates)
+                            should_queue = decision.should_queue
+                            if compat and not should_queue:
+                                candidates = find_steganographier_candidates(
+                                    full,
+                                    cancel_check=scan_cancelled,
+                                )
+                                should_queue = bool(candidates)
+                            if (
+                                deep
+                                and decision.reason == "no_archive_structure"
                             ):
-                                return
-                            count += 1
+                                candidates = find_candidates(
+                                    full,
+                                    cancel_check=scan_cancelled,
+                                    progress_cb=report_file_progress,
+                                )
+                                should_queue = bool(candidates)
+                            if scan_cancelled():
+                                break
+                            if should_queue:
+                                count += 1
+                                if not self._post_to_tk(
+                                    self._enqueue_scanned_path,
+                                    generation,
+                                    full,
+                                    auto_start,
+                                    scan_config,
+                                    candidates,
+                                ):
+                                    return
+                            scanned_count += 1
+                            post_scan_progress(
+                                full,
+                                100,
+                                scanned_count,
+                            )
             except Exception as exc:
                 failure = f"{type(exc).__name__}: {exc}"
                 logger.exception("Background folder scan failed")
             finally:
+                if last_progress_path:
+                    post_scan_progress(
+                        last_progress_path,
+                        100,
+                        max(1, scanned_count),
+                        force=True,
+                    )
                 self._post_to_tk(
                     self._finish_background_scan,
                     generation,
@@ -1831,13 +2078,19 @@ class Smart7zAppModern:
                     failure,
                 )
 
+        self._show_scan_progress(generation)
         self._scan_thread = threading.Thread(target=worker, name="Smart7zScan", daemon=True)
         self._scan_threads.add(self._scan_thread)
         self._scan_thread.start()
         return True
 
     def _enqueue_scanned_path(
-        self, generation, path, auto_start, config_snapshot
+        self,
+        generation,
+        path,
+        auto_start,
+        config_snapshot,
+        precomputed_candidates=None,
     ) -> bool:
         if (
             generation != self._scan_generation
@@ -1847,11 +2100,14 @@ class Smart7zAppModern:
             return False
         accepted = self._enqueue_path(
             path,
-            auto_start=auto_start,
+            auto_start=False,
             explicit_input=False,
             config_snapshot=config_snapshot,
             from_scan=True,
+            precomputed_candidates=precomputed_candidates,
         )
+        if accepted and auto_start:
+            self._scan_autostart_generations.add(generation)
         if not accepted:
             self._disable_context_auto_close(abnormal=True)
         return accepted
@@ -1863,9 +2119,12 @@ class Smart7zAppModern:
         if self._scan_thread is scan_thread:
             self._scan_thread = None
         if generation != self._scan_generation:
+            self._scan_autostart_generations.discard(generation)
             return
+        self._hide_scan_progress(generation)
         cancelled = self._scan_cancel.is_set() or self._closing
         if cancelled:
+            self._scan_autostart_generations.discard(generation)
             self._update_pending_intake_display()
             return
         if failure:
@@ -1873,6 +2132,10 @@ class Smart7zAppModern:
             self.log_event("SCAN_FAILED", count=count, detail=failure)
         else:
             self.log_event("SCAN_COMPLETE", count=count)
+        should_auto_start = generation in self._scan_autostart_generations
+        self._scan_autostart_generations.discard(generation)
+        if should_auto_start and self.scheduler:
+            self.scheduler.enable_processing()
         self._start_next_pending_scan()
         self._schedule_context_auto_close_check()
 
@@ -1894,6 +2157,7 @@ class Smart7zAppModern:
         config_snapshot=None,
         from_scan=False,
         from_pending=False,
+        precomputed_candidates=None,
     ):
         path = os.path.normpath(path)
         logical_key = logical_archive_key(path)
@@ -1927,6 +2191,7 @@ class Smart7zAppModern:
                 job_config.get("_extract_to_source_override", False)
             ),
             explicit_input=bool(explicit_input),
+            stego_candidates=list(precomputed_candidates or ()),
         )
         if self.scheduler:
             accepted = self.scheduler.submit(job)
@@ -1958,6 +2223,10 @@ class Smart7zAppModern:
         candidate["wait_disk_space"] = self.var_wait_space.get()
         candidate["extract_mode"] = "staging" if self.var_staging_mode.get() else "direct"
         candidate["deep_scan"] = self.var_deep_scan.get()
+        candidate["steganographier_compat_mode"] = (
+            self.var_steganographier_compat.get()
+            and not self.var_deep_scan.get()
+        )
         candidate["nested_extraction"] = self.var_nested.get()
         try:
             candidate["max_nested_depth"] = max(
@@ -2005,6 +2274,10 @@ class Smart7zAppModern:
             self.config.get("extract_mode", "staging") == "staging"
         )
         self.var_deep_scan.set(bool(self.config.get("deep_scan", False)))
+        self.var_steganographier_compat.set(
+            bool(self.config.get("steganographier_compat_mode", True))
+            and not self.var_deep_scan.get()
+        )
         self.var_nested.set(bool(self.config.get("nested_extraction", False)))
         self.var_cleanup_policy.set(self.config.get("cleanup_policy", "keep"))
         for entry, value in (
@@ -2080,6 +2353,8 @@ class Smart7zAppModern:
 
     def _release_pending_intake(self) -> int:
         released = 0
+        start_requested = False
+        start_deferred_to_scan = False
         while self._pending_intake:
             (
                 kind,
@@ -2105,22 +2380,31 @@ class Smart7zAppModern:
                     )
                     self._pending_intake_keys.add(key)
                     break
+                scan_auto_start = bool(auto_start or start_requested)
                 accepted = self._launch_background_scan(
-                    [path], auto_start, config_snapshot
+                    [path], scan_auto_start, config_snapshot
                 )
                 if accepted:
                     released += 1
+                    start_deferred_to_scan = scan_auto_start
                 break
             else:
                 accepted = self._enqueue_path(
                     path,
-                    auto_start=auto_start,
+                    auto_start=False,
                     explicit_input=explicit_input,
                     config_snapshot=config_snapshot,
                     from_pending=True,
                 )
             if accepted:
                 released += 1
+                start_requested = bool(start_requested or auto_start)
+        if (
+            start_requested
+            and not start_deferred_to_scan
+            and self.scheduler
+        ):
+            self.scheduler.enable_processing()
         self._update_pending_intake_display()
         self._schedule_context_auto_close_check()
         return released
@@ -2142,6 +2426,8 @@ class Smart7zAppModern:
         self._scan_cancel.set()
         self._scan_generation += 1
         self._scan_thread = None
+        self._scan_autostart_generations.clear()
+        self._hide_scan_progress()
         self._pending_intake.clear()
         self._pending_intake_keys.clear()
         self._update_pending_intake_display()
@@ -2470,6 +2756,8 @@ class Smart7zAppModern:
         self._closing = True
         self._scan_cancel.set()
         self._scan_generation += 1
+        self._scan_autostart_generations.clear()
+        self._hide_scan_progress()
         self._pending_intake.clear()
         self._pending_intake_keys.clear()
         if self.scheduler:

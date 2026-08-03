@@ -173,6 +173,30 @@ class TestExecutorPasswordsAndMetrics(unittest.TestCase):
                 ["manual", "batch-success", "file-first", "file-second"],
             )
 
+    def test_precomputed_structural_candidates_are_reused(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executor = self._executor(temp_dir)
+            job = Job(path=os.path.join(temp_dir, "hidden.bin"))
+            job.stego_candidates = [
+                ArchiveCandidate(
+                    embedded_format="7z",
+                    start_offset=10,
+                    end_offset=40,
+                    confidence=Confidence.LOW,
+                    mode="signature_only",
+                )
+            ]
+
+            with mock.patch.object(
+                executor,
+                "_find_stego_candidates",
+                side_effect=AssertionError("precomputed candidates must be reused"),
+            ):
+                state = executor._prepare_stego_candidate(job)
+
+            self.assertEqual(state, JobState.STEGO_CANDIDATE_REVIEW)
+            self.assertEqual(len(job.stego_candidates), 1)
+
     def test_encrypted_extraction_skips_guaranteed_no_password_attempt(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             Path(temp_dir, "code.txt").write_text("file-password\n", encoding="utf-8")
@@ -366,16 +390,58 @@ class TestStegoCandidates(unittest.TestCase):
         finally:
             os.remove(path)
 
+    def test_find_candidates_uses_one_combined_signature_pass(self):
+        zip_data = self._zip_bytes()
+        with tempfile.NamedTemporaryFile(delete=False) as stream:
+            path = stream.name
+            stream.write(b"host-prefix" + zip_data + b"host-tail")
+        progress = []
+        original_scan = stego_candidates._scan_signatures_once
+
+        def record_scan(*args, **kwargs):
+            progress.append((args[2], args[3]))
+            return original_scan(*args, **kwargs)
+
+        try:
+            with (
+                mock.patch.object(
+                    stego_candidates,
+                    "_scan_signatures_once",
+                    side_effect=record_scan,
+                ) as combined_scan,
+                mock.patch.object(
+                    stego_candidates,
+                    "_scan_occurrences",
+                    side_effect=AssertionError("duplicate full scan"),
+                ),
+            ):
+                candidates = find_candidates(
+                    path,
+                    progress_cb=lambda completed, total: progress.append(
+                        (completed, total)
+                    ),
+                )
+
+            self.assertTrue(candidates)
+            self.assertEqual(combined_scan.call_count, 1)
+            self.assertEqual(
+                tuple(combined_scan.call_args.args[1]),
+                stego_candidates.SCAN_SIGNATURES,
+            )
+            self.assertEqual(progress[-1], (os.path.getsize(path),) * 2)
+        finally:
+            os.remove(path)
+
     def test_exact_scan_uses_only_zip_signature_pass(self):
         zip_data = self._zip_bytes()
         with tempfile.NamedTemporaryFile(delete=False) as stream:
             path = stream.name
             stream.write(b"media-prefix" + zip_data + b"media-tail")
         scanned_needles = []
-        original_scan = stego_candidates._scan_occurrences
+        original_scan = stego_candidates._scan_signatures_once
 
         def record_scan(*args, **kwargs):
-            scanned_needles.append(args[1])
+            scanned_needles.extend(args[1])
             return original_scan(*args, **kwargs)
 
         try:
@@ -392,7 +458,7 @@ class TestStegoCandidates(unittest.TestCase):
                 ),
                 mock.patch.object(
                     stego_candidates,
-                    "_scan_occurrences",
+                    "_scan_signatures_once",
                     side_effect=record_scan,
                 ),
             ):
@@ -401,7 +467,7 @@ class TestStegoCandidates(unittest.TestCase):
                 )
 
             self.assertEqual(len(candidates), 1)
-            self.assertEqual(set(scanned_needles), {stego_candidates.SIG_EOCD})
+            self.assertEqual(scanned_needles, [stego_candidates.SIG_EOCD])
         finally:
             os.remove(path)
 

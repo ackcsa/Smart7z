@@ -29,6 +29,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "wait_disk_space": True,
     "del_archive": False,
     "deep_scan": False,
+    "steganographier_compat_mode": True,
     "temp_dir": r"C:\Temp_Smart7z",
     "password_file": "code.txt",
     "extract_mode": "staging",
@@ -53,6 +54,7 @@ _CONFIG_TYPES: Dict[str, type] = {
     "wait_disk_space": bool,
     "del_archive": bool,
     "deep_scan": bool,
+    "steganographier_compat_mode": bool,
     "temp_dir": str,
     "password_file": str,
     "extract_mode": str,
@@ -392,19 +394,21 @@ def get_password_file_path(config: Dict[str, Any]) -> str:
     legacy = os.path.abspath(os.path.join(get_app_dir(), path))
     if (
         os.path.abspath(destination) != os.path.abspath(legacy)
-        and not os.path.exists(destination)
-        and os.path.isfile(legacy)
+        and _password_file_has_data(legacy)
+        and not _password_file_has_data(destination)
     ):
-        try:
-            os.makedirs(os.path.dirname(destination), exist_ok=True)
-            shutil.copy2(legacy, destination)
-        except OSError as exc:
-            warnings.warn(
-                f"[Smart7z] Could not migrate password file to writable state: {exc}",
-                RuntimeWarning,
-                stacklevel=2,
-            )
+        # Upgrade installs preserve app-local code.txt.  If the newer state
+        # location is absent or only an empty placeholder, keep using the
+        # existing password book in place instead of shadowing it.
+        return legacy
     return destination
+
+
+def _password_file_has_data(path: str) -> bool:
+    try:
+        return os.path.isfile(path) and os.path.getsize(path) > 0
+    except OSError:
+        return False
 
 
 def find_sevenzip(config: Any = None) -> Optional[str]:

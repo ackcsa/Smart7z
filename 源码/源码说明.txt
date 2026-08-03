@@ -8,9 +8,12 @@ Smart 7z Ultra 1.0.0 源码版
 源码包包含一方 Python 源码、测试、构建脚本、资源模板和用户手册；
 不包含构建产物、虚拟环境、离线工具链、缓存或运行时恢复记录。
 
-本次更新包括关闭阶段单实例接管、完整加密清单复用、成功密码优先、
-有界流式 SLT 解析、20 万条内部解析安全上限、条目超限提前终止、
-分阶段计时和保守格式回退。
+本次更新新增默认开启的 SteganographierGUI 非全读取兼容探测，支持
+普通 MP4 追加 ZIP、ZArchiver free 原子和 MKV ZIP 附件；同时包括
+深度扫描单轮流式预检与候选复用、非常驻扫描进度、
+任务详情高度调整和小包优先调度、密码提示布局恢复、旧密码本继承、
+普通 EXE 目录保护及高置信度 ZIP/7z SFX 例外，以及此前的关闭阶段
+单实例接管、完整加密清单复用、有界流式 SLT 解析和安全上限。
 
 运行与验证
 ----------
@@ -18,7 +21,7 @@ Smart 7z Ultra 1.0.0 源码版
 - 安装 7-Zip，或将 7z.exe 放在解压后的源码根目录。
 - 启动：python smart7z.py
 - 全量测试：python -m unittest discover -s tests -v
-- 最终源码 ZIP 验证结果：339/339 通过，其中 17 项使用真实 7-Zip 26.02。
+- 最终源码验证结果：361/361 通过，真实 7-Zip 集成用例全部通过。
 - 构建：powershell -ExecutionPolicy Bypass -File .\build_release.ps1
 
 完整说明见源码包中的 README.txt 和 Smart7z-User-Manual.html。

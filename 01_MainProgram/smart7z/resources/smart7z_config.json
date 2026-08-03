@@ -5,6 +5,7 @@
     "wait_disk_space": true,
     "del_archive": false,
     "deep_scan": false,
+    "steganographier_compat_mode": true,
     "temp_dir": "C:\\Temp_Smart7z",
     "password_file": "code.txt",
     "extract_mode": "staging",

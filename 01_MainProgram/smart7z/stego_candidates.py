@@ -17,17 +17,19 @@ archives (scan from end) and prepended containers. Candidates are scored:
 complete structural validation > signature-only, shortest span preferred.
 """
 
+import bisect
 import os
 import stat
 import struct
 import logging
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from models import ArchiveCandidate, Confidence
 
 logger = logging.getLogger(__name__)
 
 CancelCheck = Optional[Callable[[], bool]]
+ProgressCallback = Optional[Callable[[int, int], None]]
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -51,6 +53,7 @@ ZIP_CENTRAL_HEADER_SIZE = 46
 
 BMFF_BOX_SIZE = 8
 SCAN_CHUNK_BYTES = 1024 * 1024
+SCAN_SIGNATURES = (SIG_EOCD, SIG_7Z, SIG_RAR4, SIG_RAR5)
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +120,94 @@ def _scan_occurrences(path: str, needle: bytes, start: int, end: int,
     except (IOError, OSError):
         pass
     return occurrences
+
+
+def _scan_signatures_once(
+    path: str,
+    needles: Iterable[bytes],
+    start: int,
+    end: int,
+    *,
+    chunk_size: int = SCAN_CHUNK_BYTES,
+    max_results: int = 10_000,
+    priority_tail_needle: Optional[bytes] = SIG_EOCD,
+    progress_cb: ProgressCallback = None,
+    cancel_check: CancelCheck = None,
+) -> Dict[bytes, List[int]]:
+    """Find several signatures in one sequential file read.
+
+    EOCD results retain tail priority so a hostile prefix containing many
+    false signatures cannot crowd out a normal appended archive.
+    """
+
+    unique_needles = tuple(dict.fromkeys(needles))
+    results: Dict[bytes, List[int]] = {
+        needle: [] for needle in unique_needles
+    }
+    if not unique_needles or start >= end:
+        return results
+
+    priority_prefix: List[int] = []
+    priority_tail: List[int] = []
+    priority_tail_start = max(start, end - (EOCD_MAX_COMMENT * 4))
+    overlap = max(len(needle) for needle in unique_needles) - 1
+    total = end - start
+
+    try:
+        with open(path, 'rb') as stream:
+            search_pos = start
+            stream.seek(start)
+            previous_tail = b''
+            while search_pos < end:
+                if cancel_check is not None and cancel_check():
+                    return results
+                read_size = min(chunk_size, end - search_pos)
+                chunk = stream.read(read_size)
+                if not chunk:
+                    break
+                prefix = (
+                    previous_tail[-overlap:]
+                    if overlap and previous_tail
+                    else b''
+                )
+                scan = prefix + chunk
+                scan_start = search_pos - len(prefix)
+
+                for needle in unique_needles:
+                    local = scan.find(needle)
+                    while local != -1:
+                        absolute = scan_start + local
+                        if absolute >= start:
+                            if needle == priority_tail_needle:
+                                target = (
+                                    priority_tail
+                                    if absolute >= priority_tail_start
+                                    else priority_prefix
+                                )
+                                if len(target) < max_results:
+                                    target.append(absolute)
+                            elif len(results[needle]) < max_results:
+                                results[needle].append(absolute)
+                        local = scan.find(needle, local + 1)
+
+                search_pos += len(chunk)
+                previous_tail = chunk
+                if progress_cb is not None:
+                    try:
+                        progress_cb(min(search_pos, end) - start, total)
+                    except Exception:
+                        logger.debug(
+                            "Signature scan progress callback failed",
+                            exc_info=True,
+                        )
+    except (IOError, OSError):
+        return results
+
+    if priority_tail_needle in results:
+        tail = priority_tail[:max_results]
+        remaining = max(0, max_results - len(tail))
+        results[priority_tail_needle] = tail + priority_prefix[:remaining]
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -542,6 +633,8 @@ def _validate_all_zip_entries(path: str, file_size: int,
         if local_filename != filename:
             return False
         local_offsets.add(local_absolute)
+        if local_absolute not in geom.local_header_offsets:
+            geom.local_header_offsets.append(local_absolute)
         parsed += 1
         if parsed > geom.entry_count:
             return False
@@ -556,6 +649,12 @@ def _validate_all_zip_entries(path: str, file_size: int,
             "entry_count_matches",
         ]
     )
+    if geom.local_header_offsets:
+        geom.flags.append(
+            "multiple_local_headers"
+            if len(geom.local_header_offsets) > 1
+            else "single_local_header"
+        )
     return True
 
 
@@ -564,6 +663,7 @@ def _detect_zip_candidates(
     file_size: int,
     cancel_check: CancelCheck = None,
     enumerate_local_headers: bool = True,
+    eocd_offsets: Optional[Iterable[int]] = None,
 ) -> List[ArchiveCandidate]:
     """Detect and validate ZIP/ZIP64 candidates in a file."""
     candidates: List[ArchiveCandidate] = []
@@ -574,47 +674,51 @@ def _detect_zip_candidates(
     # Scan for all EOCD signatures with bounded memory.  Tail candidates are
     # collected first so a hostile file containing many false signatures near
     # its head cannot hide a normal appended archive from the result limit.
-    eocd_offsets: List[int] = []
-    seen_offsets = set()
-    tail_region = min(file_size, EOCD_MAX_COMMENT * 4)
-    tail_start = file_size - tail_region
-    tail_scan_start = max(0, tail_start - (len(SIG_EOCD) - 1))
-    tail_offsets = _scan_occurrences(
-        path,
-        SIG_EOCD,
-        tail_scan_start,
-        file_size,
-        cancel_check=cancel_check,
-    )
-    for offset in tail_offsets:
-        if offset not in seen_offsets:
-            seen_offsets.add(offset)
-            eocd_offsets.append(offset)
-    if cancel_check is not None and cancel_check():
-        return []
-
-    # The prefix scan stops where the overlapping tail scan begins, avoiding
-    # a second read of the normal EOCD region while retaining middle ZIPs.
-    all_offsets = (
-        _scan_occurrences(
+    if eocd_offsets is None:
+        discovered_offsets: List[int] = []
+        seen_offsets = set()
+        tail_region = min(file_size, EOCD_MAX_COMMENT * 4)
+        tail_start = file_size - tail_region
+        tail_scan_start = max(0, tail_start - (len(SIG_EOCD) - 1))
+        tail_offsets = _scan_occurrences(
             path,
             SIG_EOCD,
-            0,
-            tail_start,
-            max_results=10_000,
+            tail_scan_start,
+            file_size,
             cancel_check=cancel_check,
         )
-        if tail_start > 0
-        else []
-    )
-    for offset in all_offsets:
-        if offset not in seen_offsets:
-            seen_offsets.add(offset)
-            eocd_offsets.append(offset)
-    if cancel_check is not None and cancel_check():
-        return []
+        for offset in tail_offsets:
+            if offset not in seen_offsets:
+                seen_offsets.add(offset)
+                discovered_offsets.append(offset)
+        if cancel_check is not None and cancel_check():
+            return []
 
-    for eocd_off in eocd_offsets:
+        # The prefix scan stops where the overlapping tail scan begins,
+        # avoiding a second read of the normal EOCD region while retaining
+        # middle ZIPs.
+        all_offsets = (
+            _scan_occurrences(
+                path,
+                SIG_EOCD,
+                0,
+                tail_start,
+                max_results=10_000,
+                cancel_check=cancel_check,
+            )
+            if tail_start > 0
+            else []
+        )
+        for offset in all_offsets:
+            if offset not in seen_offsets:
+                seen_offsets.add(offset)
+                discovered_offsets.append(offset)
+        if cancel_check is not None and cancel_check():
+            return []
+    else:
+        discovered_offsets = list(dict.fromkeys(eocd_offsets))
+
+    for eocd_off in discovered_offsets:
         if cancel_check is not None and cancel_check():
             return []
         geom = _validate_eocd_at(path, file_size, eocd_off)
@@ -730,13 +834,21 @@ def _iterate_boxes(path: str, offset: int, file_size: int,
         pos += size
 
 
-def _detect_bmff_candidates(path: str, file_size: int,
-                            cancel_check: CancelCheck = None) -> List[ArchiveCandidate]:
+def _detect_bmff_candidates(
+    path: str,
+    file_size: int,
+    cancel_check: CancelCheck = None,
+    eocd_offsets: Optional[Iterable[int]] = None,
+) -> List[ArchiveCandidate]:
     """Detect archive candidates inside BMFF/ISO boxes."""
     candidates: List[ArchiveCandidate] = []
 
     if file_size < BMFF_BOX_SIZE:
         return candidates
+
+    known_eocd_offsets = (
+        sorted(set(eocd_offsets)) if eocd_offsets is not None else None
+    )
 
     container_types = {
         b"moov", b"trak", b"mdia", b"minf", b"stbl", b"edts",
@@ -768,14 +880,24 @@ def _detect_bmff_candidates(path: str, file_size: int,
                 continue
 
             if box_type in eligible_types and data_end - data_start >= EOCD_MIN_SIZE:
-                for eocd_off in _scan_occurrences(
-                    path,
-                    SIG_EOCD,
-                    data_start,
-                    data_end,
-                    max_results=256,
-                    cancel_check=cancel_check,
-                ):
+                if known_eocd_offsets is None:
+                    box_eocd_offsets = _scan_occurrences(
+                        path,
+                        SIG_EOCD,
+                        data_start,
+                        data_end,
+                        max_results=256,
+                        cancel_check=cancel_check,
+                    )
+                else:
+                    first = bisect.bisect_left(
+                        known_eocd_offsets, data_start
+                    )
+                    last = bisect.bisect_left(
+                        known_eocd_offsets, data_end
+                    )
+                    box_eocd_offsets = known_eocd_offsets[first:last]
+                for eocd_off in box_eocd_offsets:
                     if cancel_check is not None and cancel_check():
                         return
                     geom = _validate_eocd_at(path, file_size, eocd_off)
@@ -830,8 +952,12 @@ def _detect_bmff_candidates(path: str, file_size: int,
 # Signature-only detectors (7z, RAR)
 # ---------------------------------------------------------------------------
 
-def _detect_signature_candidates(path: str, file_size: int,
-                                 cancel_check: CancelCheck = None) -> List[ArchiveCandidate]:
+def _detect_signature_candidates(
+    path: str,
+    file_size: int,
+    cancel_check: CancelCheck = None,
+    signature_offsets: Optional[Dict[bytes, List[int]]] = None,
+) -> List[ArchiveCandidate]:
     """Detect 7z and RAR signatures as low-confidence candidates."""
     candidates: List[ArchiveCandidate] = []
 
@@ -839,8 +965,12 @@ def _detect_signature_candidates(path: str, file_size: int,
         return candidates
 
     # 7z signature: 7z BC AF 27 1C
-    sz_offsets = _scan_occurrences(
-        path, SIG_7Z, 0, file_size, cancel_check=cancel_check
+    sz_offsets = (
+        list(signature_offsets.get(SIG_7Z, ()))
+        if signature_offsets is not None
+        else _scan_occurrences(
+            path, SIG_7Z, 0, file_size, cancel_check=cancel_check
+        )
     )
     for off in sz_offsets:
         if cancel_check is not None and cancel_check():
@@ -865,8 +995,12 @@ def _detect_signature_candidates(path: str, file_size: int,
 
     # RAR4 and RAR5 signatures
     for sig, fmt in ((SIG_RAR4, "rar4"), (SIG_RAR5, "rar5")):
-        rar_offsets = _scan_occurrences(
-            path, sig, 0, file_size, cancel_check=cancel_check
+        rar_offsets = (
+            list(signature_offsets.get(sig, ()))
+            if signature_offsets is not None
+            else _scan_occurrences(
+                path, sig, 0, file_size, cancel_check=cancel_check
+            )
         )
         for off in rar_offsets:
             if cancel_check is not None and cancel_check():
@@ -955,7 +1089,11 @@ def _deduplicate_candidates(candidates: List[ArchiveCandidate]) -> List[ArchiveC
 # Public API
 # ---------------------------------------------------------------------------
 
-def find_candidates(path: str, cancel_check: CancelCheck = None) -> List[ArchiveCandidate]:
+def find_candidates(
+    path: str,
+    cancel_check: CancelCheck = None,
+    progress_cb: ProgressCallback = None,
+) -> List[ArchiveCandidate]:
     """
     Scan *path* for embedded archive candidates.
 
@@ -981,23 +1119,52 @@ def find_candidates(path: str, cancel_check: CancelCheck = None) -> List[Archive
     if file_size < EOCD_MIN_SIZE:
         return candidates
 
-    # ZIP/ZIP64 full structural validation
+    signature_offsets = _scan_signatures_once(
+        path,
+        SCAN_SIGNATURES,
+        0,
+        file_size,
+        progress_cb=progress_cb,
+        cancel_check=cancel_check,
+    )
+    if cancel_check is not None and cancel_check():
+        return []
+
+    # ZIP/ZIP64 full structural validation. Central records already validate
+    # every referenced local header, so no extra full-span local-header pass
+    # is needed here.
     candidates.extend(
-        _detect_zip_candidates(path, file_size, cancel_check=cancel_check)
+        _detect_zip_candidates(
+            path,
+            file_size,
+            cancel_check=cancel_check,
+            enumerate_local_headers=False,
+            eocd_offsets=signature_offsets.get(SIG_EOCD, ()),
+        )
     )
     if cancel_check is not None and cancel_check():
         return []
 
     # BMFF box walking
     candidates.extend(
-        _detect_bmff_candidates(path, file_size, cancel_check=cancel_check)
+        _detect_bmff_candidates(
+            path,
+            file_size,
+            cancel_check=cancel_check,
+            eocd_offsets=signature_offsets.get(SIG_EOCD, ()),
+        )
     )
     if cancel_check is not None and cancel_check():
         return []
 
     # Signature-only: 7z, RAR (bounded)
     candidates.extend(
-        _detect_signature_candidates(path, file_size, cancel_check=cancel_check)
+        _detect_signature_candidates(
+            path,
+            file_size,
+            cancel_check=cancel_check,
+            signature_offsets=signature_offsets,
+        )
     )
     if cancel_check is not None and cancel_check():
         return []
@@ -1034,7 +1201,9 @@ def is_exact_high_confidence_candidate(candidate: ArchiveCandidate) -> bool:
 
 
 def find_exact_high_confidence_candidates(
-    path: str, cancel_check: CancelCheck = None
+    path: str,
+    cancel_check: CancelCheck = None,
+    progress_cb: ProgressCallback = None,
 ) -> List[ArchiveCandidate]:
     """Find unattended ZIP candidates with one host-file signature pass."""
 
@@ -1046,16 +1215,125 @@ def find_exact_high_confidence_candidates(
         return []
     if file_size is None or file_size < EOCD_MIN_SIZE:
         return []
+    signature_offsets = _scan_signatures_once(
+        path,
+        (SIG_EOCD,),
+        0,
+        file_size,
+        progress_cb=progress_cb,
+        cancel_check=cancel_check,
+    )
+    if cancel_check is not None and cancel_check():
+        return []
     candidates = _detect_zip_candidates(
         path,
         file_size,
         cancel_check=cancel_check,
         enumerate_local_headers=False,
+        eocd_offsets=signature_offsets.get(SIG_EOCD, ()),
     )
     return [
         candidate
         for candidate in _deduplicate_candidates(candidates)
         if is_exact_high_confidence_candidate(candidate)
+    ]
+
+
+def find_exact_appended_zip_candidates(
+    path: str,
+    minimum_start: int,
+    max_prefix_bytes: int,
+    cancel_check: CancelCheck = None,
+) -> List[ArchiveCandidate]:
+    """Validate complete tail ZIPs without scanning the whole host file."""
+
+    if cancel_check is not None and cancel_check():
+        return []
+    try:
+        file_size = _regular_file_size(path)
+    except (OSError, ValueError):
+        return []
+    if file_size is None or file_size < EOCD_MIN_SIZE:
+        return []
+    minimum_start = max(0, min(int(minimum_start), file_size))
+    tail_start = max(minimum_start, file_size - EOCD_MAX_COMMENT)
+    eocd_offsets = _scan_occurrences(
+        path,
+        SIG_EOCD,
+        tail_start,
+        file_size,
+        cancel_check=cancel_check,
+    )
+    candidates = _detect_zip_candidates(
+        path,
+        file_size,
+        cancel_check=cancel_check,
+        enumerate_local_headers=False,
+        eocd_offsets=eocd_offsets,
+    )
+    return [
+        candidate
+        for candidate in _deduplicate_candidates(candidates)
+        if candidate.start_offset >= minimum_start
+        and candidate.start_offset - minimum_start <= max_prefix_bytes
+        and candidate.end_offset == file_size
+        and is_exact_high_confidence_candidate(candidate)
+    ]
+
+
+def find_exact_zip_candidates_in_span(
+    path: str,
+    span_start: int,
+    span_end: int,
+    trailing_search_bytes: int = 0,
+    cancel_check: CancelCheck = None,
+) -> List[ArchiveCandidate]:
+    """Validate ZIPs ending near a known payload boundary without full scans.
+
+    ``span_start`` and ``span_end`` describe the container payload that may
+    hold a ZIP. ``trailing_search_bytes`` permits a small, bounded suffix after
+    the ZIP, as used by Steganographier's MP4 hash-randomization trailer.
+    """
+
+    if cancel_check is not None and cancel_check():
+        return []
+    try:
+        file_size = _regular_file_size(path)
+    except (OSError, ValueError):
+        return []
+    if file_size is None:
+        return []
+
+    start = max(0, min(int(span_start), file_size))
+    end = max(start, min(int(span_end), file_size))
+    trailing = max(0, min(int(trailing_search_bytes), end - start))
+    if end - start < EOCD_MIN_SIZE:
+        return []
+
+    search_start = max(start, end - EOCD_MAX_COMMENT - trailing)
+    eocd_offsets = _scan_occurrences(
+        path,
+        SIG_EOCD,
+        search_start,
+        end,
+        cancel_check=cancel_check,
+    )
+    if cancel_check is not None and cancel_check():
+        return []
+    candidates = _detect_zip_candidates(
+        path,
+        file_size,
+        cancel_check=cancel_check,
+        enumerate_local_headers=False,
+        eocd_offsets=eocd_offsets,
+    )
+    return [
+        candidate
+        for candidate in _deduplicate_candidates(candidates)
+        if candidate.start_offset >= start
+        and candidate.end_offset <= end
+        and end - candidate.end_offset <= trailing
+        and is_exact_high_confidence_candidate(candidate)
     ]
 
 

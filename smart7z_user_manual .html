@@ -403,7 +403,7 @@
         <p class="lead">Smart7z 把批量文件、分卷、加密压缩包、文件内嵌 ZIP、嵌套压缩包和源文件清理放在同一个队列中逐项处理。完整输出通过校验后才会移到最终位置；未完整成功但仍可使用的文件会单独保留。</p>
         <div class="quick-grid">
           <a class="jump-card" href="#quick-start"><strong>开始解压</strong><span>选择交付版本，启动程序，添加文件并运行队列。</span></a>
-          <a class="jump-card" href="#options"><strong>了解解压选项</strong><span>查看输出位置、暂存模式、空间等待和深度扫描。</span></a>
+          <a class="jump-card" href="#options"><strong>了解解压选项</strong><span>查看输出位置、暂存模式、空间等待和两种扫描模式。</span></a>
           <a class="jump-card" href="#feature-matrix"><strong>查看实现</strong><span>查阅功能、任务状态、程序模块和配置项。</span></a>
         </div>
         <div class="notice warn">
@@ -420,9 +420,9 @@
           <li><strong>选择版本。</strong>安装版适合固定使用；便携版应先完整解压到可写目录；源码版用于审阅、测试或二次开发。安装版和便携版自带 <code>7z.exe</code>，源码版需要系统安装 7-Zip，或在源码根目录放置 <code>7z.exe</code>。</li>
           <li><strong>启动程序。</strong>安装版从开始菜单启动，便携版双击 <code>Smart7z.exe</code>，源码版在源码根目录运行 <code>python smart7z.py</code>。如果 Smart7z 已经打开，新进程会把路径交给现有窗口，不会再打开一套任务队列。</li>
           <li><strong>选择输出位置。</strong>勾选“解压到原目录”时，每个压缩包的输出放在其所在目录；取消勾选后，所有输出都放到“目标目录”。</li>
-          <li><strong>检查“解压选项”。</strong>尤其要确认 <a href="#cleanup">源文件清理</a>。需要时再开启 <a href="#workflow-nested">嵌套解压</a>、<a href="#workflow-stego">深度扫描</a> 或 <a href="#options-staging">暂存模式</a>。</li>
-          <li><strong>添加文件。</strong>少量文件可用“添加文件”或直接拖入窗口；整批处理目录时用“扫描文件夹”。目录扫描会自动排除普通文档和媒体文件，但可以识别结构完整、边界明确的媒体内嵌 ZIP。</li>
-          <li><strong>点击“开始”。</strong>程序保存当前设置，并按加入队列的顺序逐个处理任务。某个任务等待密码或内嵌 ZIP 候选选择时，队列中的其他任务仍可继续。</li>
+          <li><strong>检查“解压选项”。</strong>尤其要确认 <a href="#cleanup">源文件清理</a>。需要时再开启 <a href="#workflow-nested">嵌套解压</a>、<a href="#options-deep">深度扫描模式</a> 或 <a href="#options-staging">暂存模式</a>；隐写者兼容模式默认已开启。</li>
+          <li><strong>添加文件。</strong>少量文件可用“添加文件”或直接拖入窗口；整批处理目录时用“扫描文件夹”。目录扫描会自动排除普通文档和媒体文件，并在默认兼容模式下跳读识别 SteganographierGUI 的 MP4/MKV 隐写 ZIP。</li>
+          <li><strong>点击“开始”。</strong>程序保存当前设置，并优先处理待处理任务中体积较小的压缩包；大小相同时保持入队顺序。某个任务等待密码或内嵌 ZIP 候选选择时，队列中的其他任务仍可继续，人工输入完成后的恢复任务会优先继续。</li>
         </ol>
         <pre><code>cd &lt;Smart7z 源码目录&gt;
 python smart7z.py
@@ -466,7 +466,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <li>安装版和便携版已经自带 7-Zip。源码版若弹出“找不到 7z.exe”，请安装 7-Zip 或把 <code>7z.exe</code> 放到源码根目录，再重启。</li>
           <li>若弹出“依赖缺失：未检测到 tkinterdnd2”，只影响拖拽；可以继续使用“添加文件”和“扫描文件夹”。</li>
           <li>若点击“开始”时配置保存失败，先把目标目录、暂存目录和密码文件改成当前用户有写权限的位置。</li>
-          <li>随附的 <code>code.txt</code> 为空；需要自动尝试密码时，按“一行一个密码”自行填写。安装器只在该文件不存在时部署空模板，升级不会覆盖已有密码本，卸载时也会保留。该文件是明文，请勿加入公共仓库或对外分发。</li>
+          <li>随附的 <code>code.txt</code> 为空；需要自动尝试密码时，按“一行一个密码”自行填写。安装器只在该文件不存在时部署空模板，覆盖安装和升级不会覆盖已有密码本，卸载时也会保留。若旧安装地址已有非空密码本，而新的状态目录只有空占位或尚无密码本，程序会继续使用旧地址。该文件是明文，请勿加入公共仓库或对外分发。</li>
           <li>安装模式默认把配置、恢复日志、单实例状态和相对密码文件放到 <code>%LOCALAPPDATA%/Smart7z</code>。EXE 同目录存在 <code>portable.flag</code> 时改用便携模式，文件会写到 EXE 目录；该目录只读时无法保存设置。</li>
         </ul>
       </section>
@@ -490,7 +490,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <tbody>
             <tr><td>菜单栏</td><td>右键菜单 → 添加右键菜单 / 删除右键菜单</td><td>在当前用户注册或移除 Windows 资源管理器右键入口；页面中不再重复显示两枚管理按钮。</td><td><a href="#context-menu">右键菜单</a></td></tr>
             <tr><td>主操作栏</td><td>添加文件</td><td>直接选择一个或多个文件，只加入队列，不自动开始。</td><td><a href="#inputs-file">添加文件</a></td></tr>
-            <tr><td>主操作栏</td><td>扫描文件夹</td><td>在后台遍历目录，只把自动判断为压缩包的文件加入队列。</td><td><a href="#workflow-folder">扫描文件夹</a></td></tr>
+            <tr><td>主操作栏</td><td>扫描文件夹</td><td>在后台遍历目录，只把自动判断为压缩包的文件加入队列；扫描期间会临时显示当前文件进度，结束后自动隐藏。</td><td><a href="#workflow-folder">扫描文件夹</a></td></tr>
             <tr><td>主操作栏</td><td>开始</td><td>与其他按钮等高但横向更宽的主命令按钮；保存当前设置，接纳自动等待的请求，然后开始处理队列。</td><td><a href="#workflow-normal">普通解压</a></td></tr>
             <tr><td>队列操作</td><td>待接纳</td><td>只读计数。目录扫描正在运行时，后续文件、目录和 IPC 请求会自动按收到顺序等待；扫描空闲后自动接纳。</td><td><a href="#inputs">输入说明</a></td></tr>
             <tr><td>队列操作</td><td>取消当前</td><td>请求取消当前正在处理的任务，并终止当前 7-Zip 进程。</td><td><a href="#cancel-close">取消与关闭</a></td></tr>
@@ -501,15 +501,18 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
             <tr><td>路径与密码</td><td>暂存目录</td><td>暂存模式下，程序先在这里建立会话目录，解压并校验后再移动到目标位置。</td><td><a href="#options-staging">暂存模式</a></td></tr>
             <tr><td>路径与密码</td><td>密码文件</td><td>一行一个密码候选，成功密码会被提升到文件顶部。</td><td><a href="#workflow-password">密码压缩包</a></td></tr>
             <tr><td>路径与密码</td><td>主密码</td><td>在本次运行期间优先尝试的密码，不会作为长期密码保存。</td><td><a href="#workflow-password">密码压缩包</a></td></tr>
-            <tr><td>任务表</td><td>文件名、大小、状态、进度、尝试、清理策略、源文件</td><td>显示全部任务；点击任一列标题可按该列升序或降序排列。</td><td><a href="#state-reference">状态说明</a></td></tr>
-            <tr><td>任务详情</td><td>源文件处理、用户通知</td><td>保留当前任务的清理结果和最近 50 条用户通知，包括回收站改用永久删除的原因。</td><td><a href="#cleanup-notices">清理通知</a></td></tr>
+            <tr><td>任务表</td><td>文件名、大小、状态、进度、尝试、清理策略、源包处理</td><td>显示全部任务；默认按大小升序排列，点击任一列标题可切换排序列或升降序。</td><td><a href="#state-reference">状态说明</a></td></tr>
+            <tr><td>任务详情</td><td>源文件处理、用户通知</td><td>保留当前任务的清理结果和最近 50 条用户通知，包括回收站改用永久删除的原因；拖动任务表与详情页之间的分隔条可调整详情区高度。</td><td><a href="#cleanup-notices">清理通知</a></td></tr>
             <tr><td>运行日志</td><td>操作结果与异常</td><td>记录需要确认的结果和用户操作；每条固定说明都有中文、英文和稳定代码。</td><td><a href="#run-log">运行日志</a></td></tr>
-            <tr><td>提示区</td><td>密码输入</td><td>所有候选失败后出现；可输入密码或跳过。</td><td><a href="#workflow-password">密码压缩包</a></td></tr>
-            <tr><td>提示区</td><td>隐写候选选择</td><td>结构扫描发现多个候选或需要人工确认时出现。</td><td><a href="#workflow-stego">伪装文件与内嵌 ZIP</a></td></tr>
+            <tr><td>提示区</td><td>密码输入</td><td>所有候选失败后临时出现；提交或跳过后清空输入、收起提示区并恢复任务区域布局。</td><td><a href="#workflow-password">密码压缩包</a></td></tr>
+            <tr><td>提示区</td><td>隐写候选选择</td><td>结构扫描发现多个候选或需要人工确认时临时出现；选择或跳过后自动收起。</td><td><a href="#workflow-stego">伪装文件与内嵌 ZIP</a></td></tr>
           </tbody>
         </table>
         <div class="notice info">
-          <strong>任务表排序：</strong>界面不再提供状态过滤按钮，所有任务始终留在表中。第一次点击列标题使用升序，再次点击改为降序，标题箭头显示当前方向。状态升序按“中断、部分恢复、失败、需密码、等待中、处理中、完成”排列；隐写候选归入需人工处理一组，跳过归入失败一组，其余运行阶段归入处理中，同组任务保持入队顺序。
+          <strong>任务表排序：</strong>界面不再提供状态过滤按钮，所有任务始终留在表中，并默认显示“大小 ▲”。第一次点击其他列标题使用升序，再次点击改为降序，标题箭头显示当前方向。状态升序按“中断、部分恢复、失败、需密码、等待中、处理中、完成”排列；隐写候选归入需人工处理一组，跳过归入失败一组，其余运行阶段归入处理中，同组任务保持入队顺序。
+        </div>
+        <div class="notice info">
+          <strong>实际解压顺序：</strong>调度器每次从当前待处理任务中选择体积最小的源压缩包，大小相同时保持入队顺序；正在执行的任务不会被新加入的小文件抢占。密码重试和人工确认后的候选任务优先恢复，避免用户完成输入后仍长时间等待。
         </div>
         <div class="notice info">
           <strong>输入控制已简化：</strong>工具栏不再提供手动暂停接收入口。这个入口过去只延迟新增请求，不会暂停当前解压，容易与“取消当前”混淆；扫描串行、IPC 排队和关闭时停止接收仍由程序自动处理。
@@ -617,7 +620,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <strong>重复文件和分卷：</strong>同一个压缩包不会重复加入队列。同一组分卷会合并为一个任务，从首卷开始处理，避免重复解压或重复清理。
         </div>
         <div class="notice info">
-          <strong>“深度扫描”影响哪些文件：</strong>通过“添加文件”、拖拽或命令行直接指定的文件，在 7-Zip 打开失败后会自动检查内部结构，不需要开启“深度扫描”。开启该选项后，扫描文件夹时还会把没有常见压缩包结构的文件交给后续结构检查。嵌套任务不会进行深度结构扫描。
+          <strong>扫描模式影响哪些文件：</strong>通过“添加文件”、拖拽或命令行直接指定的文件，在 7-Zip 打开失败后会自动检查内部结构，不需要切换扫描模式。目录扫描默认使用“仅兼容隐写者模式（非全读取）”；开启“深度扫描模式（全文件读取）”后，会对其他文件做一次流式结构预检，只把确实发现 ZIP、7z 或 RAR 候选的文件加入队列，并把候选直接交给后续任务复用。两种模式互斥，嵌套任务不会进行深度结构扫描。
         </div>
       </section>
 
@@ -629,7 +632,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <table>
             <thead><tr><th>操作或任务状态</th><th>实际行为</th></tr></thead>
             <tbody>
-              <tr><td>只修改窗口控件</td><td>部分控件不会在每次点击后立即写盘，但通过当前窗口新添加文件或启动文件夹扫描时，“清理策略”和“深度扫描”等入队参数可能已经被记录。希望整批一致时，应先设置选项，再添加输入。</td></tr>
+              <tr><td>只修改窗口控件</td><td>部分控件不会在每次点击后立即写盘，但通过当前窗口新添加文件或启动文件夹扫描时，“清理策略”和扫描模式等入队参数可能已经被记录。希望整批一致时，应先设置选项，再添加输入。</td></tr>
               <tr><td>点击“开始”</td><td>先自动保存并应用，再启动队列。保存或应用失败时，控件恢复到上一次已提交的配置，队列不会启动。</td></tr>
               <tr><td>正常关闭窗口</td><td>关闭流程开始前自动保存当前设置。保存失败时显示错误、恢复上一次已提交的配置并取消本次关闭，避免无提示丢失修改；再次关闭会保存恢复后的配置。</td></tr>
               <tr><td>正在处理的任务</td><td>任务启动时会取得一份配置快照，后续修改不会中途改变该任务。队列中尚未开始的任务会在点击“开始”保存后使用新的普通执行设置，但其入队时记录的清理策略不会被改写。</td></tr>
@@ -668,13 +671,13 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <p>开启后，程序根据压缩包清单、输出上限和安全余量检查可用空间。暂存模式会同时检查目标盘和暂存盘，关闭暂存模式后只检查目标盘。空间不足时，任务进入 <a href="#state-reference"><code>SPACE_WAIT</code></a>，默认最多等待 <code>7200</code> 秒（2 小时）。关闭“空间等待”只会跳过等待，解压过程中仍可能因空间不足而失败。</p>
         </section>
         <section id="options-deep">
-          <h3>深度扫描</h3>
-          <p>“深度扫描”主要用于扫描文件夹。关闭时，目录扫描只接收已识别的压缩包，以及结构完整、边界明确的媒体内嵌 ZIP；开启后，没有常见压缩包结构的文件也会进入队列，并在 7-Zip 打开失败后继续检查内部结构，例如文件末尾追加的 ZIP 或 BMFF 容器 <code>free</code> box 中的 ZIP。</p>
-          <p>直接添加、拖入或通过命令行指定的文件不受这个开关限制，它们在直接打开失败后会自动尝试结构扫描。嵌套任务则始终不会进行这种扫描。</p>
+          <h3>扫描模式</h3>
+          <p>默认开启“仅兼容隐写者模式（非全读取）”。该模式只在 BMFF 的 <code>ftyp</code>/<code>free</code> 原子、MP4 文件尾以及 Matroska 的 EBML/SeekHead/Attachments 元数据处定位 SteganographierGUI ZIP，不顺序读取视频主体。</p>
+          <p>“深度扫描模式（全文件读取）”与兼容模式互斥，适用于 JPEG、未知容器或需要查找任意位置候选的目录。它会对文件做一次流式结构预检，同时查找 ZIP、7z 和 RAR 候选。直接添加、拖入或通过命令行指定的文件不受这两个目录扫描开关限制；嵌套任务始终不会进行这种扫描。</p>
         </section>
         <section id="options-nested">
           <h3>嵌套解压</h3>
-          <p>开启后，父任务完成或产生部分恢复输出时，程序会扫描其输出目录，把发现的内层压缩包作为新任务加入队列。扫描受 <code>max_nested_depth</code>、<code>max_nested_children</code> 和 <code>max_nested_output_bytes</code> 限制。</p>
+          <p>开启后，父任务完成或产生部分恢复输出时，程序会扫描其输出目录，把发现的内层压缩包作为新任务加入队列。扫描受 <code>max_nested_depth</code>、<code>max_nested_children</code> 和 <code>max_nested_output_bytes</code> 限制。结构有效的普通 Windows EXE 会保护其本目录和父目录，防止游戏或程序资源包被继续解压；保护不会越过当前输出根，改名压缩包和边界完整的 ZIP/7z 自解压文件仍可继续处理。</p>
         </section>
         <section id="options-safety">
           <h3>安全预检与自动跳过</h3>
@@ -744,6 +747,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <li>一个密码成功后，会成为本批次后续加密包的优先候选，并提升到密码文件顶部；密码值不会写入任务记录或运行日志。</li>
           <li>文件头可见的加密包会复用无密码状态下已经取得的完整清单；等待手动密码期间源文件未变化时，重新入队也不会再次读取清单。文件头加密、清单不完整或源文件已变化时仍会重新列出。</li>
           <li>已经确认加密的包在解压阶段不会再做必然失败的无密码尝试。若列清单时某个密码已经成功解锁文件头，解压会先尝试这个已验证密码。</li>
+          <li>手动密码提交或跳过后，密码输入内容会立即清空，提示区自动收起，任务表和详情区恢复原来的可用高度。</li>
           <li>点击“跳过”会把该任务标为 <code>SKIPPED</code>，源文件不会被清理。</li>
         </ul>
         <div class="notice warn">
@@ -782,13 +786,18 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
         <h3>程序如何筛选文件</h3>
         <ul class="checklist">
           <li>程序先轻量读取文件头和文件尾。常见 7z、RAR、CAB、WIM、TAR、ISO、DMG、VHD 和压缩数据流已有明确结构证据时，不再扩大边缘读取范围；ZIP 仍会继续核对中央目录。</li>
-          <li>需要在 JPEG、MP4、MKV 等媒体中寻找内嵌 ZIP 时，程序只对 ZIP 结束记录做一轮不重复区间的分块搜索，再逐项核对中央目录、本地文件头、条目数量和候选边界，不再为无关的 7z、RAR 或 BMFF 特征重复遍历整个文件。</li>
+          <li>菜单栏“右键菜单”旁的“仅兼容隐写者模式（非全读取）”默认开启。它只识别 SteganographierGUI 的普通 MP4 追加 ZIP、<code>mp4(zarchiver)</code> free 原子 ZIP 和 MKV 附件 ZIP。</li>
+          <li>兼容模式跳读 BMFF 原子或 Matroska EBML/SeekHead 元数据，只定点读取 ZIP 尾部、中央目录和被引用的本地文件头；视频主体和大型 Cluster 按已知长度直接跳过。</li>
+          <li>开启“深度扫描模式（全文件读取）”会自动关闭兼容模式。无法通过轻量边缘读取识别的文件会用同一轮流式读取同时查找 ZIP、7z、RAR 候选；扫描结果随任务入队并被执行器复用。</li>
           <li>Office 文档、APK、JAR、MSI、PDF、媒体和可执行文件即使内部带有压缩结构，也会按其实际文件类型处理，避免批量误解压。</li>
           <li>复合扩展名如 <code>.tar.gz</code>、<code>.tar.xz</code> 会作为压缩包候选。</li>
           <li>直接添加的文件不经过这层筛选，因此同一个文件从不同入口加入时，处理结果可能不同。</li>
         </ul>
         <div class="notice info">
-          <strong>本次优化只减少重复读取：</strong>目录扫描仍会查找媒体文件任意位置中结构完整、边界明确的 ZIP，没有增加文件大小限制，也没有降低中央目录、本地文件头、语义容器或路径安全检查标准。大型媒体文件不含内嵌 ZIP 时仍可能需要顺序读取一次；扫描过程中可以取消。
+          <strong>默认不会全读媒体文件：</strong>兼容模式只对 SteganographierGUI 支持的 MP4/MKV 布局做跳读定位。需要寻找 JPEG、未知布局或任意位置候选时，改用“深度扫描模式（全文件读取）”；扫描过程中可以取消。
+        </div>
+        <div class="notice info">
+          <strong>自动开始的目录任务：</strong>程序会先完成本次目录扫描并把候选整批加入队列，再按源包大小从小到大开始解压，避免扫描到的第一个大文件抢先占用处理线程。
         </div>
         <h3>适用和不适用</h3>
         <table>
@@ -796,7 +805,8 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <tbody>
             <tr><td>整理下载目录里的普通压缩包</td><td>扫描文件夹</td><td>效率高，自动跳过大量文档和媒体。</td></tr>
             <tr><td>处理扩展名错误的普通压缩包</td><td>“添加文件”或命令行文件路径</td><td>直接指定文件会绕过目录扫描的自动筛选，适合人工确认过的文件。</td></tr>
-            <tr><td>处理 JPEG/MP4/MKV 内嵌 ZIP</td><td>扫描文件夹，或直接添加文件</td><td>目录扫描能识别结构完整、边界明确的内嵌 ZIP；文件包含多个候选、证据较弱或未被扫描发现时，应直接添加并人工确认。直接添加的文件不需要另开“深度扫描”。</td></tr>
+            <tr><td>处理 SteganographierGUI 的 MP4/MKV</td><td>保持默认兼容模式后扫描文件夹</td><td>只跳读容器元数据和 ZIP 结构，不顺序读取媒体主体；候选通过精确边界校验后自动入队。</td></tr>
+            <tr><td>处理 JPEG 或未知布局的内嵌 ZIP</td><td>深度扫描，或直接添加文件</td><td>深度扫描会顺序读取文件；直接添加适合已经人工确认的单个文件。</td></tr>
             <tr><td>普通 CLI / IPC 批量处理</td><td>外部入口</td><td>默认使用 <code>keep</code>；只有显式指定 <code>--delete-source</code> 才使用永久删除。</td></tr>
             <tr><td>资源管理器右键处理</td><td>两个右键菜单项</td><td>根据所选菜单保留或永久删除源文件；两项都会把输出放在源文件所在目录。</td></tr>
           </tbody>
@@ -805,27 +815,27 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
 
       <section id="workflow-stego">
         <h2>伪装文件与内嵌 ZIP</h2>
-        <p>Smart7z 可以在普通文件或媒体文件中查找完整的 ZIP 数据。直接用 7-Zip 打开失败后，如果结构扫描找到了一个或多个可能的 ZIP，任务会进入“隐写候选”状态，必要时请你选择。</p>
+        <p>Smart7z 可以快速定位 SteganographierGUI 创建或兼容的 MP4/MKV 隐写 ZIP，也可以在深度扫描或直接添加时查找其他完整 ZIP。找到多个候选时，任务会进入“隐写候选”状态供选择。</p>
         <h3>它能识别什么</h3>
         <div class="three-col">
-          <div class="mini-card"><h4>文件末尾追加 ZIP</h4><p>例如在 JPEG 后附加一个完整 ZIP。程序会记录数据的起止位置，并检查 ZIP 中央目录。</p></div>
-          <div class="mini-card"><h4>BMFF 容器中的 ZIP</h4><p>例如藏在 MP4 <code>free</code> box 中的完整 ZIP。程序会按 BMFF box 结构检查数据边界。</p></div>
-          <div class="mini-card"><h4>ZIP 签名扫描</h4><p>检查本地文件头（local header）、中央目录（central directory）和目录结束记录（EOCD），并确认它们的相对位置与边界。</p></div>
+          <div class="mini-card"><h4>普通 MP4 追加 ZIP</h4><p>兼容 ZIP 直接结束于文件尾，以及隐写者当前版本的两组诱饵签名、随机区和空 <code>mdat</code> 尾缀。</p></div>
+          <div class="mini-card"><h4>ZArchiver free 原子</h4><p>验证 <code>ftyp</code> 后的 <code>free</code> 原子，并要求完整 ZIP 与原子载荷边界精确一致。</p></div>
+          <div class="mini-card"><h4>MKV ZIP 附件</h4><p>通过 EBML 和 SeekHead 定位 Attachments/FileData；跳过大型 Cluster，再校验附件内完整 ZIP。</p></div>
         </div>
         <h3>操作步骤</h3>
         <ol class="step-list">
-          <li>目录扫描没有发现文件，或文件中可能有多个候选时，使用“添加文件”直接选择该文件。</li>
-          <li>直接添加的文件无需开启“深度扫描”。若要让目录扫描进一步检查原本无法识别的文件，请在扫描文件夹前开启该选项。</li>
+          <li>处理隐写者 MP4/MKV 时，保持菜单栏“仅兼容隐写者模式（非全读取）”开启，然后扫描文件夹。</li>
+          <li>未知布局未被发现时，可改用“深度扫描模式（全文件读取）”，或使用“添加文件”直接选择单个文件。</li>
           <li>点击“开始”。如果直接 7-Zip 打开失败且发现候选，会显示候选列表。</li>
           <li>选择来源可信、边界完整的高置信候选。解压和校验通过后，程序会像普通任务一样保存输出。</li>
           <li>如果存在多个候选、候选边界仍不确定，或任务只能部分恢复，程序不会清理原文件。</li>
         </ol>
-        <p>程序主要查找通过结构和边界检查的 ZIP/ZIP64。发现多个候选时，需要人工选择。</p>
+        <p>所有自动入队候选都必须通过 ZIP/ZIP64 中央目录、本地文件头、条目数量和精确边界检查。发现多个候选时，需要人工选择。</p>
       </section>
 
       <section id="workflow-nested">
         <h2>嵌套解压</h2>
-        <p>嵌套解压默认关闭。开启后，父任务把文件写入最终位置，程序再扫描这些输出，把内层压缩包作为子任务加入队列。子任务沿用父任务的清理策略和嵌套限制，并执行与外层任务相同的安全预检。</p>
+        <p>嵌套解压默认关闭。开启后，父任务把文件写入最终位置，程序再扫描这些输出，把内层压缩包作为子任务加入队列。子任务沿用父任务的清理策略和嵌套限制，并执行与外层任务相同的安全预检。为避免把游戏和程序资源误当成压缩包，扫描会先识别结构有效、但没有可确认自解压载荷的 Windows EXE，并保护该 EXE 所在目录及其父目录；保护边界不会越过本次压缩包的输出根目录。</p>
         <table>
           <thead><tr><th>限制</th><th>默认/配置</th><th>说明</th></tr></thead>
           <tbody>
@@ -834,6 +844,8 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
             <tr><td>嵌套输出上限</td><td><code>max_nested_output_bytes = 0</code></td><td>0 表示不单独限制嵌套任务的总字节数；普通输出上限和磁盘空间检查仍然有效。</td></tr>
             <tr><td>循环检测</td><td>真实路径、设备号、文件标识、大小、修改时间</td><td>避免重复提交同一个文件或再次处理上层来源文件。</td></tr>
             <tr><td>路径安全</td><td>拒绝链接和重解析点</td><td>扫描时不跟随符号链接和 Windows 重解析点。</td></tr>
+            <tr><td>程序目录保护</td><td>有效 PE 的本目录与父目录</td><td>受保护目录中的资源包不再自动嵌套解压；若 EXE 位于输出根目录，只保护输出根，不影响外部目录。</td></tr>
+            <tr><td>EXE 压缩包例外</td><td>内容优先识别</td><td>普通压缩包仅改名为 <code>.exe</code> 时仍按归档内容处理；有效 PE 尾部只有一个完整、边界明确的 ZIP 或 7z 载荷时，按高置信度自解压文件处理，不触发目录保护。</td></tr>
           </tbody>
         </table>
         <div class="notice info">
@@ -1007,7 +1019,7 @@ python smart7z.py -- --queue</code></pre>
             <tr><td>任务一直显示 <code>SPACE_WAIT</code></td><td>目标盘或暂存盘空间不足。</td><td>释放空间、改用其他目标目录，或取消任务。</td><td><a href="#options-space">空间等待</a></td></tr>
             <tr><td>需要密码</td><td>本次手动输入、本批次成功密码和密码文件候选都失败，或当前没有可用密码。</td><td>在提示区输入正确密码；不确定时跳过。</td><td><a href="#workflow-password">密码压缩包</a></td></tr>
             <tr><td>任务显示“部分恢复”</td><td>7-Zip 返回警告、CRC32 不一致，或输出移动和校验没有完全成功，但仍有文件可以保留。</td><td>检查 <code>非完全恢复</code> 目录；这类任务不会清理源文件。</td><td><a href="#recovery">恢复</a></td></tr>
-            <tr><td>扫描文件夹没发现 JPEG/MP4/MKV 中的内嵌 ZIP</td><td>结构信息不足、边界无法确认，或内容不是当前支持的 ZIP 候选。</td><td>用“添加文件”直接加入；程序会在 7-Zip 打开失败后自动检查内部结构。必要时再人工提取。</td><td><a href="#workflow-stego">伪装文件与内嵌 ZIP</a></td></tr>
+            <tr><td>扫描文件夹没发现隐写者 MP4/MKV 中的内嵌 ZIP</td><td>容器原子、SeekHead、附件元数据或 ZIP 边界无法确认，或内容不是当前支持的 ZIP 候选。</td><td>保持兼容模式时检查文件是否由支持的布局创建；未知布局改用深度扫描，或用“添加文件”直接加入。</td><td><a href="#workflow-stego">伪装文件与内嵌 ZIP</a></td></tr>
             <tr><td>从右键菜单发送目录后没有立即显示</td><td>另一次目录扫描尚未完成，后续请求正在“待接纳”列表中按顺序等待。</td><td>等待当前扫描完成；程序会自动启动后续扫描，不需要手动恢复。</td><td><a href="#ipc-results">单实例与待接纳</a></td></tr>
             <tr><td>右键任务完成后窗口没有自动关闭</td><td>该窗口原本通过普通方式打开，右键窗口后来又被双击激活，或者本批处理中出现任务异常、程序异常、提示、扫描失败、未接纳请求、恢复复核或零任务。</td><td>查看任务状态和运行日志；确认问题后手动关闭。若希望正常右键任务完成后自动退出，请先关闭普通窗口，再从资源管理器右键启动。</td><td><a href="#context-menu">右键菜单</a></td></tr>
             <tr><td>提示“启动请求未转交”</td><td>检测到另一个 Smart7z 正在启动，但 15 秒内既未建立 IPC，也未释放启动互斥量。</td><td>确认现有窗口是否仍在启动或关闭；稍后重试。若任务管理器中只有无窗口且长期不退出的 Smart7z 残留进程，结束该残留进程后再启动。</td><td><a href="#single-instance">单实例 IPC</a></td></tr>
@@ -1041,11 +1053,11 @@ python smart7z.py -- --queue</code></pre>
           </ol>
         </section>
         <section>
-          <h3>解压 JPEG/MP4 中的内嵌 ZIP</h3>
+          <h3>解压隐写者 MP4/MKV 中的内嵌 ZIP</h3>
           <ol class="step-list">
-            <li>先用“扫描文件夹”。结构完整、边界明确的内嵌 ZIP 会自动加入队列。</li>
-            <li>如果没有找到，点击“添加文件”，直接选择媒体文件。</li>
-            <li>直接添加的文件会自动尝试结构扫描，无需另开“深度扫描”。</li>
+            <li>确认菜单栏“右键菜单”旁的“仅兼容隐写者模式（非全读取）”已经勾选。</li>
+            <li>使用“扫描文件夹”；普通 MP4 追加 ZIP、ZArchiver free 原子和 MKV ZIP 附件会跳读定位后加入队列。</li>
+            <li>如果未知布局没有找到，开启“深度扫描模式（全文件读取）”，或点击“添加文件”直接选择媒体文件。</li>
             <li>开始处理。若候选列表出现多个候选，只选择来源可信且边界完整的高置信候选。</li>
           </ol>
         </section>
@@ -1076,14 +1088,15 @@ python smart7z.py -- --queue</code></pre>
             <tr><td>配置加载、迁移与保存</td><td>补齐默认值，迁移旧字段 <code>del_archive</code>，解析相对路径；保存时先写临时文件，再替换原配置。</td><td><code>config.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>7-Zip 调用</td><td>统一处理清单读取、解压、进度解析、警告、取消和返回码分类。</td><td><code>sevenzip.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>分卷识别</td><td>识别数字卷、RAR part、经典 RAR、分卷 ZIP、ARJ、SWM。</td><td><code>discovery.py</code></td><td><span class="tag ok">已实现</span></td></tr>
-            <tr><td>自动分类</td><td>目录扫描时根据文件内容判断是否加入队列，并排除普通文档和媒体。结构完整、边界明确的媒体内嵌 ZIP 可以加入队列；扫描过程可以取消。</td><td><code>archive_classifier.py</code></td><td><span class="tag ok">已实现</span></td></tr>
-            <tr><td>内嵌 ZIP 候选</td><td>定位追加 ZIP、ZIP64、BMFF box 中的 ZIP 和其他签名候选，并计算置信度；遍历较长结构时会响应取消请求。</td><td><code>stego_candidates.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>自动分类</td><td>目录扫描时根据文件内容判断是否加入队列，并排除普通文档、程序和媒体；只有所选扫描模式确认的内嵌 ZIP 才会覆盖媒体语义。</td><td><code>archive_classifier.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>隐写者兼容探测</td><td>默认以 BMFF/EBML 跳读方式识别 SteganographierGUI 普通 MP4、ZArchiver free 原子和 MKV ZIP 附件，不顺序读取媒体主体。</td><td><code>steganographier_compat.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>内嵌 ZIP 候选</td><td>提供 ZIP/ZIP64 精确结构校验、限定区间定点校验和深度扫描候选定位，并计算置信度。</td><td><code>stego_candidates.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>路径安全</td><td>拒绝穿越、绝对路径、设备名、ADS、控制字符、链接和重解析点。</td><td><code>path_safety.py</code></td><td><span class="tag ok">已实现</span></td></tr>
-            <tr><td>串行调度</td><td>使用一个工作线程按 FIFO 顺序处理任务；支持手动开始、等待密码或候选、取消和去重。</td><td><code>scheduler.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>串行调度</td><td>使用一个工作线程，从当前待处理任务中按源包大小升序选择；大小相同时保持入队顺序，密码或候选确认后的恢复任务优先。支持手动开始、取消和去重。</td><td><code>scheduler.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>校验后输出</td><td>先解压到临时目录，核对文件、目录、数量和大小；跨盘复制时同步核对成员 CRC32；文件写入磁盘后再移到最终位置。</td><td><code>executor.py</code>, <code>windows_adapters.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>部分恢复</td><td>输出尚未满足完整成功条件但仍有文件可恢复时，转移到“非完全恢复”目录。</td><td><code>executor.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>源文件清理</td><td>支持保留、严格回收和永久删除，只在输出完整提交并复查后执行。回收站明确不可用或单个文件超过卷容量上限时，复用恢复日志保护的永久删除流程；未知设置和普通错误会停止。清理通知同时进入任务详情和运行日志。</td><td><code>executor.py</code>, <code>windows_adapters.py</code>, <code>models.py</code>, <code>user_messages.py</code>, <code>ui_app.py</code></td><td><span class="tag ok">已实现</span></td></tr>
-            <tr><td>嵌套解压</td><td>扫描父任务输出中的内层压缩包，并限制深度、数量、总字节数，防止循环处理。</td><td><code>nested.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>嵌套解压</td><td>扫描父任务输出中的内层压缩包，并限制深度、数量、总字节数；普通 EXE 会保护其本目录和父目录，高置信度 SFX 除外。</td><td><code>nested.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>恢复日志</td><td>记录程序创建的临时目录、输出移动、源文件暂存和会话目录。记录无法写入时停止相关操作；目录元数据摘要发生变化或出现未登记内容时保留整个目录。</td><td><code>recovery.py</code>, <code>windows_adapters.py</code></td><td><span class="tag ok">已实现</span></td></tr>
           </tbody>
         </table>
@@ -1146,15 +1159,16 @@ python smart7z.py -- --queue</code></pre>
             <tr><td><code>models.py</code></td><td>状态、错误、清理策略、任务、清单和输出移动记录等数据模型。</td><td>定义 <code>JobState</code>、<code>ErrorCategory</code>、<code>CleanupPolicy</code>、<code>Job</code>；任务会记录清理策略、“输出到源目录”覆盖和最近 50 条用户通知。</td></tr>
             <tr><td><code>user_messages.py</code></td><td>用户可见消息目录。</td><td>集中保存运行日志和源文件清理通知的中英文模板与稳定代码，供程序和手册同步检查。</td></tr>
             <tr><td><code>config.py</code></td><td>配置路径、默认值、迁移、保存和 7-Zip 定位。</td><td>源码运行时使用 <code>resources</code>；打包后的安装模式使用 <code>%LOCALAPPDATA%/Smart7z</code>；存在 <code>portable.flag</code> 时使用 EXE 目录。</td></tr>
-            <tr><td><code>scheduler.py</code></td><td>任务调度。</td><td>一个工作线程按 FIFO 顺序处理任务；负责开始控制、等待密码或候选、取消，以及清除已结束的任务。</td></tr>
+            <tr><td><code>scheduler.py</code></td><td>任务调度。</td><td>一个工作线程按源包大小升序处理普通任务，同大小保持入队顺序，并优先恢复已经完成人工密码或候选选择的任务；负责开始控制、取消和清除已结束任务。</td></tr>
             <tr><td><code>executor.py</code></td><td>任务处理状态机。</td><td>负责识别压缩包、读取清单、尝试密码、预检、等待空间、解压、校验、移动输出、清理源文件和嵌套任务。</td></tr>
             <tr><td><code>sevenzip.py</code></td><td>7-Zip 调用层。</td><td>统一执行命令、解码输出、解析进度、分类返回码，并保证同一进程一次只运行一个 7-Zip 操作。</td></tr>
             <tr><td><code>discovery.py</code></td><td>分卷识别和压缩包去重标识。</td><td>避免子卷重复加入队列，并识别多种分卷命名格式。</td></tr>
             <tr id="feature-classifier"><td><code>archive_classifier.py</code></td><td>目录扫描分类器。</td><td>供目录扫描和嵌套扫描使用；直接指定的文件不经过分类。</td></tr>
-            <tr><td><code>stego_candidates.py</code></td><td>当前使用的内嵌压缩包候选定位。</td><td>检查 ZIP/ZIP64 结构、BMFF box 和文件签名，并给候选计算置信度。</td></tr>
+            <tr><td><code>steganographier_compat.py</code></td><td>隐写者兼容模式探测。</td><td>解析 BMFF 原子和 Matroska EBML/SeekHead，跳过媒体主体并把已知载荷区交给 ZIP 精确校验。</td></tr>
+            <tr><td><code>stego_candidates.py</code></td><td>通用内嵌压缩包候选定位。</td><td>检查 ZIP/ZIP64 结构、BMFF box 和文件签名，支持限定区间定点校验和全文件深度扫描。</td></tr>
             <tr><td><code>stego_engine.py</code></td><td>兼容旧接口。</td><td>供旧调用方继续使用；当前任务流程主要使用 <code>stego_candidates.py</code>。</td></tr>
             <tr><td><code>path_safety.py</code></td><td>路径安全。</td><td>拦截路径穿越、ADS、设备名、重解析点逃逸。</td></tr>
-            <tr><td><code>nested.py</code></td><td>嵌套压缩包识别。</td><td>可选功能；限制扫描深度、子任务数量和字节数，并防止循环处理。</td></tr>
+            <tr><td><code>nested.py</code></td><td>嵌套压缩包识别。</td><td>可选功能；限制扫描深度、子任务数量和字节数，防止循环处理，并在输出根边界内保护普通 EXE 的本目录和父目录。</td></tr>
             <tr><td><code>recovery.py</code></td><td>恢复日志。</td><td>跟踪临时目录和源文件暂存；日志损坏或无法写入时停止相关删除和移动操作。</td></tr>
             <tr><td><code>windows_adapters.py</code></td><td>Windows 集成。</td><td>读取卷级回收站设置，执行严格回收，提供永久删除、右键菜单、长路径、本地盘判断和会话清理。</td></tr>
           </tbody>
@@ -1171,9 +1185,10 @@ python smart7z.py -- --queue</code></pre>
             <tr><td><code>target_dir</code></td><td>空</td><td>非原目录解压时的目标目录。</td></tr>
             <tr><td><code>extract_to_source</code></td><td><code>true</code></td><td>是否解压到源压缩包所在目录。</td></tr>
             <tr><td><code>wait_disk_space</code></td><td><code>true</code></td><td>空间不足时是否等待。</td></tr>
-            <tr><td><code>deep_scan</code></td><td><code>false</code></td><td>扫描文件夹时，是否把无法识别为压缩包的文件也交给内部结构扫描。直接指定的文件不受此开关限制；嵌套任务始终不做深度扫描。</td></tr>
+            <tr><td><code>steganographier_compat_mode</code></td><td><code>true</code></td><td>默认扫描模式。只跳读识别 SteganographierGUI 兼容的 MP4/MKV ZIP，不顺序读取媒体主体；开启深度扫描时自动关闭。</td></tr>
+            <tr><td><code>deep_scan</code></td><td><code>false</code></td><td>是否对无法轻量识别的文件做一次 ZIP、7z、RAR 全文件流式预检；开启时自动关闭隐写者兼容模式。直接指定的文件不受此开关限制；嵌套任务始终不做深度扫描。</td></tr>
             <tr><td><code>temp_dir</code></td><td><code>C:/Temp_Smart7z</code></td><td>暂存模式使用的临时根。</td></tr>
-            <tr><td><code>password_file</code></td><td><code>code.txt</code></td><td>密码候选文件路径；相对路径按程序目录解析。</td></tr>
+            <tr><td><code>password_file</code></td><td><code>code.txt</code></td><td>密码候选文件路径。安装模式的相对路径通常落在用户状态目录；若旧安装地址已有非空密码本且状态位置没有有效内容，则继续使用旧地址。源码和便携模式按各自状态根目录解析。</td></tr>
             <tr><td><code>extract_mode</code></td><td><code>staging</code></td><td><code>staging</code> 使用配置的暂存目录；<code>direct</code> 在目标目录下建立隐藏临时目录。两种模式都会先校验，再移到最终位置。</td></tr>
             <tr><td><code>config_version</code></td><td><code>1</code></td><td>配置结构版本，由程序维护。</td></tr>
             <tr><td><code>cleanup_policy</code></td><td><code>keep</code></td><td><code>keep</code>、<code>recycle</code>、<code>permanent</code>；三类交付首次运行都默认保留源文件。</td></tr>
@@ -1192,11 +1207,11 @@ python smart7z.py -- --queue</code></pre>
 
       <section id="test-reference">
         <h2>测试</h2>
-        <p>项目包含单元测试和使用本机 7-Zip 的集成测试，覆盖界面生命周期、右键菜单注册、单实例参数转发、配置、分卷识别、路径安全、7-Zip 输出解析、运行时安全、内嵌 ZIP 候选、输出提交和源文件恢复。</p>
+        <p>项目包含单元测试和使用本机 7-Zip 的集成测试，覆盖界面生命周期、扫描模式、SteganographierGUI 三类布局与非全读取预算、右键菜单注册、单实例参数转发、配置、分卷识别、路径安全、7-Zip 输出解析、运行时安全、内嵌 ZIP 候选、输出提交和源文件恢复。</p>
         <table>
           <thead><tr><th>资产</th><th>位置</th><th>说明</th></tr></thead>
           <tbody>
-            <tr><td>主测试目录</td><td><code>01_MainProgram/smart7z/tests</code></td><td>包含界面生命周期、用户消息与手册同步、日志密度、右键菜单与 IPC、配置、分卷识别、路径安全、7-Zip 输出解析、运行时安全、内嵌 ZIP 候选、输出提交和源文件恢复测试。</td></tr>
+            <tr><td>主测试目录</td><td><code>01_MainProgram/smart7z/tests</code></td><td>包含界面生命周期、扫描模式、隐写者 MP4/MKV 跳读定位、用户消息与手册同步、右键菜单与 IPC、配置、分卷识别、路径安全、7-Zip 输出解析、运行时安全、输出提交和源文件恢复测试。</td></tr>
           </tbody>
         </table>
         <h3>常用验证命令</h3>
@@ -1213,7 +1228,7 @@ python -m unittest tests.test_integration_real7z -v</code></pre>
         <h3>发布前检查</h3>
         <ul class="checklist">
           <li>确认 7-Zip 路径有效，版本差异记录在发布说明中。</li>
-          <li>确认资源模板使用 <code>cleanup_policy=keep</code>、<code>del_archive=false</code>，并且 <code>code.txt</code> 为空。</li>
+          <li>确认资源模板使用 <code>cleanup_policy=keep</code>、<code>del_archive=false</code>、<code>steganographier_compat_mode=true</code>，并且 <code>code.txt</code> 为空。</li>
           <li>验证配置文件和密码文件所在目录可写。</li>
           <li>分别测试普通 ZIP、加密 7z、完整分卷、缺卷、恶意路径、部分损坏和带内嵌 ZIP 的外层文件。</li>
           <li>检查 <code>PARTIAL_RECOVERY</code>、<code>FAILED</code>、<code>INTERRUPTED</code> 状态下都不会清理源文件。</li>

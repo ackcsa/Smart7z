@@ -6,6 +6,7 @@ import tarfile
 import tempfile
 import unittest
 import zipfile
+import zlib
 from pathlib import Path
 from unittest import mock
 
@@ -31,6 +32,51 @@ def _ooxml_bytes():
             "_rels/.rels": b"<Relationships/>",
             "word/document.xml": b"<document/>",
         }
+    )
+
+
+def _pe_bytes(overlay=b""):
+    image = bytearray(0x400)
+    image[:2] = b"MZ"
+    struct.pack_into("<L", image, 0x3C, 0x80)
+    image[0x80:0x84] = b"PE\x00\x00"
+    struct.pack_into(
+        "<HHLLLHH",
+        image,
+        0x84,
+        0x8664,
+        1,
+        0,
+        0,
+        0,
+        0xF0,
+        0x0022,
+    )
+    optional_offset = 0x98
+    struct.pack_into("<H", image, optional_offset, 0x20B)
+    struct.pack_into("<L", image, optional_offset + 60, 0x200)
+    struct.pack_into("<L", image, optional_offset + 108, 16)
+    section_offset = optional_offset + 0xF0
+    image[section_offset : section_offset + 8] = b".text\x00\x00\x00"
+    struct.pack_into("<L", image, section_offset + 8, 0x200)
+    struct.pack_into("<L", image, section_offset + 12, 0x1000)
+    struct.pack_into("<L", image, section_offset + 16, 0x200)
+    struct.pack_into("<L", image, section_offset + 20, 0x200)
+    struct.pack_into("<L", image, section_offset + 36, 0x60000020)
+    return bytes(image) + overlay
+
+
+def _7z_bytes():
+    next_header = b"\x01\x00"
+    next_crc = zlib.crc32(next_header) & 0xFFFFFFFF
+    start_header = struct.pack("<QQL", 0, len(next_header), next_crc)
+    start_crc = zlib.crc32(start_header) & 0xFFFFFFFF
+    return (
+        b"7z\xbc\xaf\x27\x1c"
+        + b"\x00\x04"
+        + struct.pack("<L", start_crc)
+        + start_header
+        + next_header
     )
 
 
@@ -353,6 +399,148 @@ class TestAutomaticDiscoveryIntegration(unittest.TestCase):
                 "image.swm",
             },
         )
+
+    def test_root_executable_protects_the_whole_extraction_root(self):
+        submitted = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "game.exe").write_bytes(_pe_bytes())
+            (Path(temp_dir) / "resources.pak").write_bytes(
+                _zip_bytes({"asset.bin": b"payload"})
+            )
+            extractor = NestedExtractor(
+                enabled=True,
+                max_depth=2,
+                submit_cb=submitted.append,
+                archive_extensions={".pak"},
+            )
+
+            count = extractor.scan_and_submit(Job(path="parent.zip"), temp_dir)
+
+        self.assertEqual(count, 0)
+        self.assertEqual(submitted, [])
+
+    def test_executable_protects_its_directory_and_parent_only(self):
+        submitted = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            executable_dir = root / "game" / "bin"
+            executable_dir.mkdir(parents=True)
+            (executable_dir / "game.exe").write_bytes(_pe_bytes())
+            (root / "game" / "assets.pak").write_bytes(
+                _zip_bytes({"asset.bin": b"payload"})
+            )
+            other = root / "other"
+            other.mkdir()
+            (other / "archive.zip").write_bytes(
+                _zip_bytes({"data.txt": b"nested"})
+            )
+            extractor = NestedExtractor(
+                enabled=True,
+                max_depth=2,
+                submit_cb=submitted.append,
+                archive_extensions={".pak", ".zip"},
+            )
+
+            count = extractor.scan_and_submit(Job(path="parent.zip"), temp_dir)
+
+        self.assertEqual(count, 1)
+        self.assertEqual(submitted[0].original_basename, "archive.zip")
+
+    def test_executable_protection_never_crosses_the_extraction_root(self):
+        extractor = NestedExtractor(enabled=True)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "output"
+            root.mkdir()
+            executable = root / "game.exe"
+            executable.write_bytes(_pe_bytes())
+            decisions = {}
+
+            protected = extractor._find_protected_directories(
+                str(root), decisions
+            )
+
+            canonical_root = extractor._canonical(str(root))
+            self.assertEqual(protected, {canonical_root})
+            self.assertNotIn(
+                extractor._canonical(str(root.parent)), protected
+            )
+
+    def test_zip_sfx_executable_remains_a_nested_candidate(self):
+        submitted = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sfx = Path(temp_dir) / "setup.exe"
+            sfx.write_bytes(
+                _pe_bytes(_zip_bytes({"payload.txt": b"payload"}))
+            )
+            extractor = NestedExtractor(
+                enabled=True,
+                max_depth=2,
+                submit_cb=submitted.append,
+            )
+
+            count = extractor.scan_and_submit(Job(path="parent.zip"), temp_dir)
+
+        self.assertEqual(count, 1)
+        self.assertEqual(submitted[0].original_basename, "setup.exe")
+
+    def test_7z_sfx_executable_remains_a_nested_candidate(self):
+        submitted = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            sfx = Path(temp_dir) / "installer.exe"
+            sfx.write_bytes(_pe_bytes(_7z_bytes()))
+            extractor = NestedExtractor(
+                enabled=True,
+                max_depth=2,
+                submit_cb=submitted.append,
+            )
+
+            count = extractor.scan_and_submit(Job(path="parent.zip"), temp_dir)
+
+        self.assertEqual(count, 1)
+        self.assertEqual(submitted[0].original_basename, "installer.exe")
+
+    def test_archive_renamed_exe_does_not_enable_directory_protection(self):
+        submitted = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "renamed.exe").write_bytes(
+                _zip_bytes({"renamed.txt": b"payload"})
+            )
+            (root / "sibling.zip").write_bytes(
+                _zip_bytes({"sibling.txt": b"payload"})
+            )
+            extractor = NestedExtractor(
+                enabled=True,
+                max_depth=2,
+                submit_cb=submitted.append,
+            )
+
+            count = extractor.scan_and_submit(Job(path="parent.zip"), temp_dir)
+
+        self.assertEqual(count, 2)
+        self.assertEqual(
+            {job.original_basename for job in submitted},
+            {"renamed.exe", "sibling.zip"},
+        )
+
+    def test_non_pe_exe_name_does_not_enable_directory_protection(self):
+        submitted = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "game.exe").write_bytes(b"MZ-not-a-valid-pe")
+            (root / "sibling.zip").write_bytes(
+                _zip_bytes({"sibling.txt": b"payload"})
+            )
+            extractor = NestedExtractor(
+                enabled=True,
+                max_depth=2,
+                submit_cb=submitted.append,
+            )
+
+            count = extractor.scan_and_submit(Job(path="parent.zip"), temp_dir)
+
+        self.assertEqual(count, 1)
+        self.assertEqual(submitted[0].original_basename, "sibling.zip")
 
     def test_nested_jobs_never_use_structural_deep_scan(self):
         deep_executor = Executor(object(), {"deep_scan": True})

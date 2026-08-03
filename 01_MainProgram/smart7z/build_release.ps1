@@ -189,8 +189,12 @@ try {
         throw 'resources\code.txt must be empty before release packaging.'
     }
     $releaseConfig = Get-Content -LiteralPath (Join-Path $SourceDir 'resources\smart7z_config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($releaseConfig.cleanup_policy -ne 'keep' -or $releaseConfig.del_archive -ne $false) {
-        throw 'Release configuration must default to cleanup_policy=keep and del_archive=false.'
+    if (
+        $releaseConfig.cleanup_policy -ne 'keep' -or
+        $releaseConfig.del_archive -ne $false -or
+        $releaseConfig.steganographier_compat_mode -ne $true
+    ) {
+        throw 'Release configuration must keep sources and enable Steganographier compatibility by default.'
     }
 
 if (-not $InnoSetupCompiler) {

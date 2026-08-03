@@ -12,8 +12,9 @@ from unittest import mock
 
 import ui_app
 import windows_adapters
+from archive_classifier import AutoDiscoveryDecision
 from config import DEFAULT_CONFIG
-from models import ErrorCategory, Job, JobState
+from models import ArchiveCandidate, Confidence, ErrorCategory, Job, JobState
 from user_messages import format_user_message
 
 
@@ -148,6 +149,10 @@ class _FakeWidget:
         self.menu_cascades.append(dict(_kwargs))
         return None
 
+    def add_checkbutton(self, **_kwargs):
+        self.menu_commands.append(dict(_kwargs))
+        return None
+
     def add(self, child, **kwargs):
         self.children_added.append((child, dict(kwargs)))
         return None
@@ -247,6 +252,9 @@ class _FakeScheduler:
         self.stop_count = 0
         self.enable_count = 0
         self.refresh_count = 0
+        self.password_responses = []
+        self.skipped_password_jobs = []
+        self.stego_selections = []
         self.recovery_messages = []
         self.recovery_journal = types.SimpleNamespace(
             protected_session_paths=lambda: []
@@ -287,6 +295,15 @@ class _FakeScheduler:
     def set_session_main_password(self, _password):
         return None
 
+    def submit_password_response(self, job, password):
+        self.password_responses.append((job, password))
+
+    def skip_password_job(self, job):
+        self.skipped_password_jobs.append(job)
+
+    def submit_stego_selection(self, job, candidate_index):
+        self.stego_selections.append((job, candidate_index))
+
     def clear_finished(self, _task_ids=None):
         return []
 
@@ -326,6 +343,7 @@ def _patched_ui(config, sevenzip_path=r"C:\Program Files\7-Zip\7z.exe"):
         "Spinbox",
         "Listbox",
         "Menu",
+        "PanedWindow",
     )
     with ExitStack() as stack:
         for name in widget_names:
@@ -368,9 +386,30 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                     [item.get("label") for item in app.menubar.menu_cascades],
                     ["右键菜单"],
                 )
+                self.assertEqual(
+                    [item.get("label") for item in app.menubar.menu_commands],
+                    ["仅兼容隐写者模式（非全读取）"],
+                )
+                self.assertTrue(app.var_steganographier_compat.get())
                 self.assertFalse(hasattr(app, "context_menu_controls"))
                 self.assertFalse(hasattr(app, "btn_add_context_menu"))
                 self.assertFalse(hasattr(app, "btn_remove_context_menu"))
+                app._on_closing()
+
+    def test_scan_modes_are_mutually_exclusive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with _patched_ui(_test_config(temp)):
+                app = ui_app.Smart7zAppModern(_FakeRoot())
+                self.assertTrue(app.var_steganographier_compat.get())
+                self.assertFalse(app.var_deep_scan.get())
+
+                app.var_deep_scan.set(True)
+                app._on_deep_scan_change()
+                self.assertFalse(app.var_steganographier_compat.get())
+
+                app.var_steganographier_compat.set(True)
+                app._on_steganographier_compat_change()
+                self.assertFalse(app.var_deep_scan.get())
                 app._on_closing()
 
     def test_close_saves_current_controls_before_shutdown(self):
@@ -449,7 +488,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                         "解压到原目录",
                         "空间等待",
                         "暂存模式",
-                        "深度扫描",
+                        "深度扫描模式（全文件读取）",
                         "嵌套解压",
                     ],
                 )
@@ -513,10 +552,13 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 app = ui_app.Smart7zAppModern(_FakeRoot())
 
                 self.assertEqual(app.tree["height"], 5)
+                self.assertEqual(app.tree.headings["size"]["text"], "大小 ▲")
+                self.assertEqual(ui_app.TREE_COLUMNS[-1][1], "源包处理")
                 self.assertIs(app.file_progress.master, app.progress_frame)
                 self.assertIs(app.total_progress.master, app.progress_frame)
                 self.assertEqual(app.file_progress.pack_options["side"], ui_app.tk.LEFT)
                 self.assertEqual(app.total_progress.pack_options["side"], ui_app.tk.LEFT)
+                self.assertIs(app.queue_panel.master, app.work_pane)
                 self.assertIs(app.details_frame.master, app.inspector_tabs)
                 self.assertIs(app.log_frame.master, app.inspector_tabs)
                 self.assertEqual(
@@ -525,7 +567,38 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 )
                 self.assertEqual(app.details_text["height"], 3)
                 self.assertEqual(app.log_text["height"], 3)
-                self.assertTrue(app.inspector_tabs.packed)
+                self.assertEqual(
+                    [child for child, _options in app.work_pane.children_added],
+                    [app.queue_panel, app.inspector_tabs],
+                )
+                self.assertTrue(app.work_pane.packed)
+                self.assertFalse(app.scan_progress_frame.packed)
+                app._on_closing()
+
+    def test_scan_progress_is_visible_only_for_the_active_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with _patched_ui(_test_config(temp)):
+                app = ui_app.Smart7zAppModern(_FakeRoot())
+                generation = app._scan_generation + 1
+                app._scan_generation = generation
+
+                app._show_scan_progress(generation)
+                app._update_scan_progress(
+                    generation,
+                    4,
+                    2,
+                    str(Path(temp) / "archive.zip"),
+                    55,
+                )
+
+                self.assertTrue(app.scan_progress_frame.packed)
+                self.assertEqual(app.scan_progress["value"], 55)
+                self.assertIn("已发现 2", app.scan_progress_label["text"])
+
+                app._hide_scan_progress(generation - 1)
+                self.assertTrue(app.scan_progress_frame.packed)
+                app._hide_scan_progress(generation)
+                self.assertFalse(app.scan_progress_frame.packed)
                 app._on_closing()
 
     def test_state_column_uses_requested_priority_and_tracks_updates(self):
@@ -817,7 +890,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                         "解压到原目录",
                         "空间等待",
                         "暂存模式",
-                        "深度扫描",
+                        "深度扫描模式（全文件读取）",
                         "嵌套解压",
                     ],
                 )
@@ -844,35 +917,49 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 self.assertFalse(hasattr(app, "btn_extract_options"))
                 app._on_closing()
 
-    def test_password_prompt_uses_priority_host_and_advances_fifo(self):
+    def test_password_prompt_is_transient_and_advances_fifo(self):
         with tempfile.TemporaryDirectory() as temp:
             root = _FakeRoot()
             with _patched_ui(_test_config(temp)):
                 app = ui_app.Smart7zAppModern(root)
+                scheduler = _FakeScheduler.instances[-1]
                 first = Job(path=str(Path(temp) / "first-encrypted.rar"))
                 second = Job(path=str(Path(temp) / "second-encrypted.rar"))
 
                 self.assertEqual(root.options["minsize"], (800, 600))
-                self.assertTrue(app.prompt_host.packed)
+                self.assertFalse(app.prompt_host.packed)
                 self.assertIs(app.pwd_frame.master, app.prompt_host)
                 self.assertIs(app.stego_frame.master, app.prompt_host)
                 self.assertIs(app.pwd_entry.master, app.pwd_input_row)
 
                 app._show_password_prompt(first)
                 self.assertTrue(app.pwd_frame.packed)
+                self.assertTrue(app.prompt_host.packed)
                 self.assertIs(app.current_pwd_job, first)
                 self.assertIn("first-encrypted.rar", app.pwd_label["text"])
 
                 app._show_password_prompt(second)
                 self.assertEqual(app.pending_pwd_jobs, [second])
 
-                app.current_pwd_job = None
-                app.pwd_frame.pack_forget()
-                app._show_next_password_prompt()
+                app.pwd_entry.insert(0, "stale-password")
+                app._dismiss_prompts_for_job(first)
                 self.assertTrue(app.pwd_frame.packed)
                 self.assertIs(app.current_pwd_job, second)
                 self.assertEqual(app.pending_pwd_jobs, [])
+                self.assertEqual(app.pwd_entry.get(), "")
                 self.assertIn("second-encrypted.rar", app.pwd_label["text"])
+
+                app.pwd_entry.insert(0, "manual-password")
+                app._submit_password()
+
+                self.assertEqual(
+                    scheduler.password_responses,
+                    [(second, "manual-password")],
+                )
+                self.assertIsNone(app.current_pwd_job)
+                self.assertEqual(app.pwd_entry.get(), "")
+                self.assertFalse(app.pwd_frame.packed)
+                self.assertFalse(app.prompt_host.packed)
                 app._on_closing()
 
     def test_constructor_cli_autostart_and_idempotent_close(self):
@@ -1777,6 +1864,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
             archive = Path(temp) / "archive.docx"
             document = Path(temp) / "document.zip"
             unknown = Path(temp) / "unknown.bin"
+            hidden = Path(temp) / "hidden.bin"
             with zipfile.ZipFile(archive, "w") as output:
                 output.writestr("payload.txt", "payload")
             with zipfile.ZipFile(document, "w") as output:
@@ -1784,6 +1872,10 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 output.writestr("_rels/.rels", "<Relationships/>")
                 output.writestr("word/document.xml", "<document/>")
             unknown.write_bytes(b"not an archive")
+            with hidden.open("wb") as stream:
+                stream.truncate(3 * 1024 * 1024)
+                stream.seek(1536 * 1024)
+                stream.write(b"7z\xbc\xaf\x27\x1c\x00\x04payload")
 
             config = _test_config(temp)
             config["deep_scan"] = True
@@ -1800,10 +1892,69 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 )
                 self.assertEqual(
                     {Path(job.path).name for job in scheduler.jobs},
-                    {"archive.docx", "unknown.bin"},
+                    {"archive.docx", "hidden.bin"},
                 )
                 self.assertTrue(
                     all(not job.explicit_input for job in scheduler.jobs)
+                )
+                hidden_job = next(
+                    job
+                    for job in scheduler.jobs
+                    if Path(job.path).name == "hidden.bin"
+                )
+                self.assertTrue(hidden_job.stego_candidates)
+                self.assertFalse(app.scan_progress_frame.packed)
+                app._on_closing()
+
+    def test_compat_scan_reuses_candidate_without_full_file_scan(self):
+        with tempfile.TemporaryDirectory() as temp:
+            media = Path(temp) / "hidden.mp4"
+            media.write_bytes(b"media")
+            candidate = ArchiveCandidate(
+                host_format="bmff",
+                embedded_format="zip",
+                start_offset=1,
+                end_offset=5,
+                mode="steganographier_mp4_trailing",
+                confidence=Confidence.HIGH,
+                validation_flags=["steganographier_compatible"],
+            )
+            with _patched_ui(_test_config(temp)):
+                root = _FakeRoot()
+                app = ui_app.Smart7zAppModern(root)
+                scheduler = _FakeScheduler.instances[-1]
+                with (
+                    mock.patch.object(
+                        ui_app,
+                        "classify_automatic_candidate",
+                        return_value=AutoDiscoveryDecision(
+                            False,
+                            "semantic_container",
+                            semantic_kind="iso_bmff_media",
+                        ),
+                    ) as classifier,
+                    mock.patch.object(
+                        ui_app,
+                        "find_steganographier_candidates",
+                        return_value=[candidate],
+                    ) as compat_scan,
+                    mock.patch.object(
+                        ui_app,
+                        "find_candidates",
+                        side_effect=AssertionError(
+                            "compat mode must not run the full scanner"
+                        ),
+                    ),
+                ):
+                    self.assertTrue(app._start_background_scan([temp]))
+                    app._scan_thread.join(timeout=2)
+                    root.run_deferred("_drain_tk_queue")
+
+                self.assertEqual(len(scheduler.jobs), 1)
+                self.assertEqual(scheduler.jobs[0].stego_candidates, [candidate])
+                self.assertEqual(compat_scan.call_count, 1)
+                self.assertFalse(
+                    classifier.call_args.kwargs["allow_full_embedded_scan"]
                 )
                 app._on_closing()
 

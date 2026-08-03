@@ -890,7 +890,11 @@ class Executor:
     ) -> Optional[JobState]:
         if self._cancelled():
             return self._mark_interrupted(job, "Cancelled before structural scan")
-        candidates = self._find_stego_candidates(job)
+        candidates = (
+            list(job.stego_candidates)
+            if job.stego_candidates
+            else self._find_stego_candidates(job)
+        )
         if self._cancelled():
             return self._mark_interrupted(job, "Cancelled during structural scan")
         if require_embedded:

@@ -5,11 +5,15 @@ from __future__ import annotations
 import os
 import stat
 import struct
+import zlib
 from dataclasses import dataclass
 from typing import Callable, Iterable, Optional, Set, Tuple
 
+from models import ArchiveCandidate
+
 
 CancelCheck = Optional[Callable[[], bool]]
+ProgressCallback = Optional[Callable[[int, int], None]]
 
 
 HEAD_SCAN_BYTES = 1024 * 1024
@@ -17,6 +21,9 @@ TAIL_SCAN_BYTES = 1024 * 1024
 QUICK_EDGE_SCAN_BYTES = 64 * 1024
 MAX_ZIP_CLASSIFY_ENTRIES = 250_000
 MAX_ZIP_CENTRAL_BYTES = 32 * 1024 * 1024
+MAX_PE_HEADER_OFFSET = 1024 * 1024
+MAX_SFX_PREFIX_BYTES = 1024 * 1024
+MAX_7Z_NEXT_HEADER_BYTES = 32 * 1024 * 1024
 
 ZIP_LOCAL = b"PK\x03\x04"
 ZIP_CENTRAL = b"PK\x01\x02"
@@ -99,6 +106,7 @@ class AutoDiscoveryDecision:
     reason: str
     semantic_kind: str = ""
     archive_evidence: Tuple[str, ...] = ()
+    candidates: Tuple[ArchiveCandidate, ...] = ()
 
     @property
     def is_semantic(self) -> bool:
@@ -143,6 +151,8 @@ def classify_automatic_candidate(
     path: str,
     archive_extensions: Optional[Iterable[str]] = None,
     cancel_check: CancelCheck = None,
+    progress_cb: ProgressCallback = None,
+    allow_full_embedded_scan: bool = True,
 ) -> AutoDiscoveryDecision:
     """Classify a file found by a folder or nested-output scan.
 
@@ -200,8 +210,9 @@ def classify_automatic_candidate(
             tail_start,
             cancel_check=cancel_check,
         )
-        if zip_info is None or (
-            semantic and _is_media_semantic(semantic) and archive_evidence
+        if allow_full_embedded_scan and (
+            zip_info is None
+            or (semantic and _is_media_semantic(semantic) and archive_evidence)
         ):
             try:
                 from stego_candidates import find_exact_high_confidence_candidates
@@ -209,7 +220,9 @@ def classify_automatic_candidate(
                 exact_embedded = [
                     candidate
                     for candidate in find_exact_high_confidence_candidates(
-                        path, cancel_check=cancel_check
+                        path,
+                        cancel_check=cancel_check,
+                        progress_cb=progress_cb,
                     )
                     if candidate.start_offset > 0 or candidate.end_offset < file_size
                 ]
@@ -248,6 +261,7 @@ def classify_automatic_candidate(
                 "confirmed_embedded_archive",
                 semantic_kind=semantic,
                 archive_evidence=tuple(sorted(archive_evidence)),
+                candidates=tuple(exact_embedded),
             )
 
     if semantic:
@@ -272,6 +286,211 @@ def classify_automatic_candidate(
     if suffix in advertised and suffix not in SEMANTIC_EXTENSION_HINTS:
         return AutoDiscoveryDecision(True, "extension_hint")
     return AutoDiscoveryDecision(False, "no_archive_structure")
+
+
+def classify_nested_candidate(
+    path: str,
+    archive_extensions: Optional[Iterable[str]] = None,
+    cancel_check: CancelCheck = None,
+) -> AutoDiscoveryDecision:
+    """Classify nested output while protecting ordinary Windows programs.
+
+    A structurally valid PE is considered a protection anchor unless its
+    overlay contains one complete, boundary-validated ZIP or 7z payload.
+    Files merely named ``.exe`` continue through normal content detection.
+    """
+
+    if os.path.splitext(path)[1].casefold() != ".exe":
+        return classify_automatic_candidate(
+            path,
+            archive_extensions,
+            cancel_check=cancel_check,
+        )
+    if cancel_check is not None and cancel_check():
+        return AutoDiscoveryDecision(False, "cancelled")
+
+    pe_image_end = windows_pe_image_end(path)
+    if pe_image_end is None:
+        return classify_automatic_candidate(
+            path,
+            archive_extensions,
+            cancel_check=cancel_check,
+        )
+    try:
+        file_size = os.path.getsize(path)
+    except OSError:
+        return AutoDiscoveryDecision(False, "unreadable")
+
+    if pe_image_end < file_size:
+        try:
+            from stego_candidates import find_exact_appended_zip_candidates
+
+            zip_candidates = find_exact_appended_zip_candidates(
+                path,
+                pe_image_end,
+                MAX_SFX_PREFIX_BYTES,
+                cancel_check=cancel_check,
+            )
+        except (OSError, ValueError, EOFError):
+            zip_candidates = []
+        if cancel_check is not None and cancel_check():
+            return AutoDiscoveryDecision(False, "cancelled")
+        if len(zip_candidates) == 1:
+            return AutoDiscoveryDecision(
+                True,
+                "self_extracting_archive",
+                semantic_kind="windows_executable",
+                archive_evidence=("zip_sfx_overlay",),
+                candidates=tuple(zip_candidates),
+            )
+        if _has_valid_7z_sfx_overlay(path, pe_image_end, file_size):
+            return AutoDiscoveryDecision(
+                True,
+                "self_extracting_archive",
+                semantic_kind="windows_executable",
+                archive_evidence=("7z_sfx_overlay",),
+            )
+
+    return AutoDiscoveryDecision(
+        False,
+        "protected_executable",
+        semantic_kind="windows_executable",
+    )
+
+
+def windows_pe_image_end(path: str) -> Optional[int]:
+    """Return the first byte after a validated PE image, or ``None``."""
+
+    try:
+        file_size = _regular_file_size(path)
+        if file_size is None or file_size < 64:
+            return None
+        with open(path, "rb") as stream:
+            dos_header = stream.read(64)
+            if len(dos_header) != 64 or not dos_header.startswith(b"MZ"):
+                return None
+            pe_offset = struct.unpack_from("<L", dos_header, 0x3C)[0]
+            if pe_offset < 64 or pe_offset > MAX_PE_HEADER_OFFSET:
+                return None
+            stream.seek(pe_offset)
+            pe_header = stream.read(24)
+            if len(pe_header) != 24 or pe_header[:4] != b"PE\x00\x00":
+                return None
+            machine, section_count = struct.unpack_from("<HH", pe_header, 4)
+            optional_size = struct.unpack_from("<H", pe_header, 20)[0]
+            if (
+                machine not in _PE_MACHINES
+                or not 1 <= section_count <= 96
+                or optional_size < 64
+            ):
+                return None
+            optional = stream.read(optional_size)
+            sections = stream.read(section_count * 40)
+    except (OSError, struct.error):
+        return None
+
+    if len(optional) != optional_size or len(sections) != section_count * 40:
+        return None
+    try:
+        magic = struct.unpack_from("<H", optional, 0)[0]
+        if magic == 0x10B:
+            directory_count_offset = 92
+            directory_offset = 96
+        elif magic == 0x20B:
+            directory_count_offset = 108
+            directory_offset = 112
+        else:
+            return None
+        image_end = struct.unpack_from("<L", optional, 60)[0]
+        if image_end <= 0 or image_end > file_size:
+            return None
+        for index in range(section_count):
+            section = sections[index * 40 : (index + 1) * 40]
+            raw_size, raw_offset = struct.unpack_from("<LL", section, 16)
+            if raw_size:
+                section_end = raw_offset + raw_size
+                if raw_offset <= 0 or section_end > file_size:
+                    return None
+                image_end = max(image_end, section_end)
+        if optional_size >= directory_count_offset + 4:
+            directory_count = struct.unpack_from(
+                "<L", optional, directory_count_offset
+            )[0]
+            certificate_offset = directory_offset + (4 * 8)
+            if directory_count > 4 and optional_size >= certificate_offset + 8:
+                cert_start, cert_size = struct.unpack_from(
+                    "<LL", optional, certificate_offset
+                )
+                if cert_size:
+                    cert_end = cert_start + cert_size
+                    if cert_start <= 0 or cert_end > file_size:
+                        return None
+                    image_end = max(image_end, cert_end)
+    except struct.error:
+        return None
+    return image_end
+
+
+_PE_MACHINES = frozenset(
+    {
+        0x014C,
+        0x01C0,
+        0x01C2,
+        0x01C4,
+        0x01F0,
+        0x01F1,
+        0x0200,
+        0x8664,
+        0xAA64,
+    }
+)
+
+
+def _has_valid_7z_sfx_overlay(
+    path: str, pe_image_end: int, file_size: int
+) -> bool:
+    search_size = min(MAX_SFX_PREFIX_BYTES, file_size - pe_image_end)
+    if search_size < 32:
+        return False
+    try:
+        with open(path, "rb") as stream:
+            stream.seek(pe_image_end)
+            prefix = stream.read(search_size)
+            search_from = 0
+            while True:
+                local_offset = prefix.find(SEVEN_ZIP, search_from)
+                if local_offset < 0:
+                    return False
+                search_from = local_offset + 1
+                archive_start = pe_image_end + local_offset
+                stream.seek(archive_start)
+                header = stream.read(32)
+                if len(header) != 32 or header[:6] != SEVEN_ZIP:
+                    continue
+                expected_start_crc = struct.unpack_from("<L", header, 8)[0]
+                if zlib.crc32(header[12:32]) & 0xFFFFFFFF != expected_start_crc:
+                    continue
+                next_offset, next_size, expected_next_crc = struct.unpack_from(
+                    "<QQL", header, 12
+                )
+                if next_size > MAX_7Z_NEXT_HEADER_BYTES:
+                    continue
+                next_start = archive_start + 32 + next_offset
+                next_end = next_start + next_size
+                if next_start < archive_start + 32 or next_end != file_size:
+                    continue
+                stream.seek(next_start)
+                next_header = stream.read(next_size)
+                if len(next_header) != next_size:
+                    continue
+                if (
+                    next_header[:1] in {b"\x01", b"\x17"}
+                    and zlib.crc32(next_header) & 0xFFFFFFFF
+                    == expected_next_crc
+                ):
+                    return True
+    except (OSError, struct.error):
+        return False
 
 
 def _is_media_semantic(kind: str) -> bool:

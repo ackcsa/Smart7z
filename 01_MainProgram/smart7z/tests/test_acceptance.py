@@ -339,6 +339,54 @@ class TestSchedulerCancel(unittest.TestCase):
         self.assertTrue(all(job.state == JobState.COMPLETE for job in jobs))
         self.assertEqual(events.count("password_promoted"), 1)
 
+    def test_queued_jobs_run_smallest_first_with_stable_ties(self):
+        sched = self._make_scheduler()
+        paths = []
+        for name, size in (
+            ("large.zip", 40),
+            ("small-first.zip", 5),
+            ("middle.zip", 20),
+            ("small-second.zip", 5),
+        ):
+            path = Path(self._scheduler_temp.name, name)
+            path.write_bytes(b"x" * size)
+            paths.append(path)
+
+        execution_order = []
+
+        def finish(job, **_kwargs):
+            execution_order.append(Path(job.path).name)
+            job.record_state(JobState.COMPLETE)
+            return JobState.COMPLETE, None
+
+        jobs = [Job(path=str(path)) for path in paths]
+        with (
+            mock.patch.object(sched.executor, "execute", side_effect=finish),
+            mock.patch.object(sched.executor, "cleanup_job_artifacts"),
+        ):
+            for job in jobs:
+                self.assertTrue(sched.submit(job))
+            sched.start()
+            sched.enable_processing()
+
+            deadline = time.time() + 3
+            while (
+                any(job.state != JobState.COMPLETE for job in jobs)
+                and time.time() < deadline
+            ):
+                time.sleep(0.01)
+
+        self.assertTrue(all(job.state == JobState.COMPLETE for job in jobs))
+        self.assertEqual(
+            execution_order,
+            [
+                "small-first.zip",
+                "small-second.zip",
+                "middle.zip",
+                "large.zip",
+            ],
+        )
+
     def test_processing_latch_closes_after_batch_and_requires_new_start(self):
         sched = self._make_scheduler()
         def finish(job, **_kwargs):

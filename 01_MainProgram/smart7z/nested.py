@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Optional, Set, Tuple
 
-from archive_classifier import classify_automatic_candidate
+from archive_classifier import AutoDiscoveryDecision, classify_nested_candidate
 from discovery import is_multipart_child
 from models import Job
 from path_safety import is_reparse_escape
@@ -128,17 +128,36 @@ class NestedExtractor:
         parent_sources: Set[str],
         state: _NestedBatchState,
     ) -> None:
+        decisions: Dict[str, AutoDiscoveryDecision] = {}
+        protected_dirs = self._find_protected_directories(
+            directory,
+            decisions,
+        )
+        if self.cancel_check():
+            return
+        if protected_dirs:
+            logger.info(
+                "Nested executable protection active for %s director%s",
+                len(protected_dirs),
+                "y" if len(protected_dirs) == 1 else "ies",
+            )
         try:
             for root, dirs, files in os.walk(directory, topdown=True, followlinks=False):
                 if self.cancel_check():
                     return
                 while self.io_busy() and not self.cancel_check():
                     time.sleep(0.1)
+                if self._path_is_protected(root, protected_dirs):
+                    dirs[:] = []
+                    continue
                 dirs[:] = [
                     name
                     for name in dirs
                     if not os.path.islink(os.path.join(root, name))
                     and not is_reparse_escape(os.path.join(root, name))
+                    and not self._path_is_protected(
+                        os.path.join(root, name), protected_dirs
+                    )
                 ]
                 for fname in files:
                     if self.cancel_check():
@@ -157,6 +176,7 @@ class NestedExtractor:
                         depth,
                         parent_sources,
                         state,
+                        decisions,
                     )
         except OSError:
             logger.exception("Nested scan error")
@@ -168,6 +188,7 @@ class NestedExtractor:
         depth: int,
         parent_sources: Set[str],
         state: _NestedBatchState,
+        decisions: Optional[Dict[str, AutoDiscoveryDecision]] = None,
     ) -> bool:
         if state.submitted >= self.max_children or self.cancel_check():
             return False
@@ -181,7 +202,7 @@ class NestedExtractor:
         identity = self._identity(path)
         if identity is None or identity in state.visited or norm in parent_sources:
             return False
-        if is_multipart_child(path) or not self._is_archive(path):
+        if is_multipart_child(path) or not self._is_archive(path, decisions):
             return False
 
         child = Job(
@@ -206,12 +227,89 @@ class NestedExtractor:
         state.submitted += 1
         return True
 
-    def _is_archive(self, path: str) -> bool:
-        return classify_automatic_candidate(
-            path,
-            self.archive_extensions,
-            cancel_check=self.cancel_check,
-        ).should_queue
+    def _is_archive(
+        self,
+        path: str,
+        decisions: Optional[Dict[str, AutoDiscoveryDecision]] = None,
+    ) -> bool:
+        key = self._canonical(path)
+        decision = decisions.get(key) if decisions is not None else None
+        if decision is None:
+            decision = classify_nested_candidate(
+                path,
+                self.archive_extensions,
+                cancel_check=self.cancel_check,
+            )
+            if decisions is not None:
+                decisions[key] = decision
+        return decision.should_queue
+
+    def _find_protected_directories(
+        self,
+        directory: str,
+        decisions: Dict[str, AutoDiscoveryDecision],
+    ) -> Set[str]:
+        root_boundary = self._canonical(directory)
+        protected: Set[str] = set()
+        try:
+            for root, dirs, files in os.walk(
+                directory, topdown=True, followlinks=False
+            ):
+                if self.cancel_check():
+                    return protected
+                while self.io_busy() and not self.cancel_check():
+                    time.sleep(0.1)
+                dirs[:] = [
+                    name
+                    for name in dirs
+                    if not os.path.islink(os.path.join(root, name))
+                    and not is_reparse_escape(os.path.join(root, name))
+                ]
+                for name in files:
+                    if self.cancel_check():
+                        return protected
+                    if os.path.splitext(name)[1].casefold() != ".exe":
+                        continue
+                    path = os.path.join(root, name)
+                    if (
+                        os.path.islink(path)
+                        or is_reparse_escape(path)
+                        or not os.path.isfile(path)
+                    ):
+                        continue
+                    key = self._canonical(path)
+                    decision = classify_nested_candidate(
+                        path,
+                        self.archive_extensions,
+                        cancel_check=self.cancel_check,
+                    )
+                    decisions[key] = decision
+                    if decision.reason != "protected_executable":
+                        continue
+                    current = self._canonical(os.path.dirname(path))
+                    if self._is_within_root(current, root_boundary):
+                        protected.add(current)
+                    parent = self._canonical(os.path.dirname(current))
+                    if self._is_within_root(parent, root_boundary):
+                        protected.add(parent)
+        except OSError:
+            logger.exception("Nested executable protection scan error")
+        return protected
+
+    @classmethod
+    def _path_is_protected(cls, path: str, protected_dirs: Set[str]) -> bool:
+        canonical = cls._canonical(path)
+        return any(
+            cls._is_within_root(canonical, protected)
+            for protected in protected_dirs
+        )
+
+    @staticmethod
+    def _is_within_root(path: str, root: str) -> bool:
+        try:
+            return os.path.commonpath((path, root)) == root
+        except ValueError:
+            return False
 
     def retain_batches(self, active_batch_ids: Set[str]) -> None:
         """Release cycle/quota state once a root batch has no active jobs."""
