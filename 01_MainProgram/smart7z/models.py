@@ -120,6 +120,36 @@ class ArchiveManifest:
     listing_return_code: int = -1
     entry_count: int = 0
     diagnostics: List[str] = field(default_factory=list)
+    listing_wall_ms: float = 0.0
+    parse_cpu_ms: float = 0.0
+    listing_attempts: int = 0
+    early_abort_reason: str = ""
+
+
+@dataclass
+class JobPhaseMetrics:
+    listing_wall_ms: float = 0.0
+    listing_attempts: int = 0
+    parse_cpu_ms: float = 0.0
+    preflight_wall_ms: float = 0.0
+    extraction_wall_ms: float = 0.0
+    extraction_attempts: int = 0
+    output_scan_wall_ms: float = 0.0
+    total_wall_ms: float = 0.0
+    early_abort_reason: str = ""
+
+    def summary(self) -> str:
+        parts = [
+            f"list={self.listing_wall_ms:.1f}ms/{self.listing_attempts}",
+            f"parse_cpu={self.parse_cpu_ms:.1f}ms",
+            f"preflight={self.preflight_wall_ms:.1f}ms",
+            f"extract={self.extraction_wall_ms:.1f}ms/{self.extraction_attempts}",
+            f"scan={self.output_scan_wall_ms:.1f}ms",
+            f"total={self.total_wall_ms:.1f}ms",
+        ]
+        if self.early_abort_reason:
+            parts.append(f"abort={self.early_abort_reason}")
+        return "[TIMING] " + " ".join(parts)
 
 
 @dataclass
@@ -238,6 +268,8 @@ class Job:
     terminal_diagnostics: List[str] = field(default_factory=list)
     user_notices: List[str] = field(default_factory=list)
     state_history: List[JobState] = field(default_factory=lambda: [JobState.QUEUED])
+    phase_metrics: JobPhaseMetrics = field(default_factory=JobPhaseMetrics, repr=False)
+    reuse_manifest_on_password_retry: bool = field(default=False, repr=False)
     _retrying: bool = False
 
     @property

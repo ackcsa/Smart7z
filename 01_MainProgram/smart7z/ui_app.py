@@ -2651,12 +2651,18 @@ def create_root():
     return tk.Tk()
 
 
-def _forward_exit_code(result: IPCForwardResult) -> Optional[int]:
+def _forward_exit_code(
+    result: IPCForwardResult,
+    *,
+    allow_shutdown_handoff: bool = False,
+) -> Optional[int]:
     """Return an exit code when launch must stop, otherwise ``None``."""
 
     if result.accepted:
         return 0
     if not result.reached_existing:
+        return None
+    if allow_shutdown_handoff and result.reason == "server_stopping":
         return None
     detail = result.reason or result.status
     try:
@@ -2688,7 +2694,10 @@ def _wait_for_existing_or_claim_mutex(request: ExternalIntakeRequest):
     while True:
         forward_result = _forward_launch_request(request)
         last_reason = forward_result.reason or forward_result.status
-        forward_exit_code = _forward_exit_code(forward_result)
+        forward_exit_code = _forward_exit_code(
+            forward_result,
+            allow_shutdown_handoff=True,
+        )
         if forward_exit_code is not None:
             raise SystemExit(forward_exit_code)
 
@@ -2701,7 +2710,7 @@ def _wait_for_existing_or_claim_mutex(request: ExternalIntakeRequest):
             try:
                 messagebox.showerror(
                     "启动请求未转交",
-                    "检测到另一个 Smart7z 正在启动，但未能在限定时间内建立通信。"
+                    "检测到另一个 Smart7z 正在启动或关闭，但未能在限定时间内完成请求转交。"
                     "\n本次请求未进入队列，也没有启动第二个实例。"
                     f"\n最后状态: {last_reason}\n请稍后重试。",
                 )
@@ -2719,7 +2728,10 @@ def run_app(argv=None):
         argv = sys.argv[1:]
     request = parse_launch_args(argv)
     forward_result = _forward_launch_request(request)
-    forward_exit_code = _forward_exit_code(forward_result)
+    forward_exit_code = _forward_exit_code(
+        forward_result,
+        allow_shutdown_handoff=sys.platform == "win32",
+    )
     if forward_exit_code is not None:
         sys.exit(forward_exit_code)
 

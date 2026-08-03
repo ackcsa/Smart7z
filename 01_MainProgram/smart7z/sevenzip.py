@@ -37,9 +37,9 @@ _FORMAT_CACHE: Dict[str, Set[str]] = {}
 
 MAX_DIAG_LINES = 50
 MAX_DIAG_BYTES = 64 * 1024
-MAX_LIST_CAPTURE_BYTES = 64 * 1024 * 1024
 MAX_COMMAND_CAPTURE_BYTES = 1024 * 1024
 MAX_PARSED_MEMBERS = 200_000
+MAX_STREAM_LINE_BYTES = 256 * 1024
 
 _SINGLE_STREAM_FORMATS = frozenset(
     {
@@ -83,10 +83,19 @@ class SevenZipError(Exception):
         message: str,
         category: ErrorCategory = ErrorCategory.INTERNAL_ERROR,
         return_code: int = -1,
+        *,
+        listing_wall_ms: float = 0.0,
+        parse_cpu_ms: float = 0.0,
+        listing_attempts: int = 0,
+        early_abort_reason: str = "",
     ):
         super().__init__(message)
         self.category = category
         self.return_code = return_code
+        self.listing_wall_ms = max(0.0, float(listing_wall_ms))
+        self.parse_cpu_ms = max(0.0, float(parse_cpu_ms))
+        self.listing_attempts = max(0, int(listing_attempts))
+        self.early_abort_reason = str(early_abort_reason or "")
 
 
 @dataclass
@@ -97,11 +106,42 @@ class SevenZipResult:
     cancelled: bool = False
     timed_out: bool = False
     output_truncated: bool = False
+    line_truncated: bool = False
     monitor_stopped: bool = False
+    consumer_stopped: bool = False
+    consumer_failed: bool = False
     warning_detected: bool = False
     bad_password_detected: bool = False
     diagnostic_tail: str = ""
     raw_sample: bytes = field(default=b"", repr=False)
+
+
+class _BoundedLineSplitter:
+    """Split byte chunks into lines while bounding an unterminated tail."""
+
+    def __init__(self, max_pending_bytes: int = MAX_STREAM_LINE_BYTES):
+        self.max_pending_bytes = max(1, int(max_pending_bytes))
+        self.pending = b""
+        self.truncated = False
+
+    def feed(self, chunk: bytes) -> List[bytes]:
+        if not chunk:
+            return []
+        data = self.pending + chunk
+        lines = data.splitlines(keepends=True)
+        if lines and not lines[-1].endswith((b"\n", b"\r")):
+            self.pending = lines.pop()
+        else:
+            self.pending = b""
+        if len(self.pending) > self.max_pending_bytes:
+            self.pending = self.pending[-self.max_pending_bytes :]
+            self.truncated = True
+        return lines
+
+    def finish(self) -> bytes:
+        pending = self.pending
+        self.pending = b""
+        return pending
 
 
 def classify_return_code(code: int) -> Tuple[bool, Optional[ErrorCategory]]:
@@ -261,64 +301,187 @@ def _targeted_type_switch(path: str) -> str:
     return ""
 
 
-def parse_slt(
-    stdout: str, max_members: int = MAX_PARSED_MEMBERS
-) -> ArchiveManifest:
-    """Parse 7z -slt output. Tolerates field order and '=' in filenames."""
-    manifest = ArchiveManifest()
-    current_file: dict = {}
-    in_files = False
-    archive_headers: dict = {}
+class SltStreamParser:
+    """Incrementally parse UTF-8 ``7z l -slt`` output with bounded lines."""
 
-    for line in stdout.splitlines():
+    def __init__(
+        self,
+        max_members: int = MAX_PARSED_MEMBERS,
+        *,
+        stop_after_entries: Optional[int] = None,
+        max_line_bytes: int = MAX_STREAM_LINE_BYTES,
+    ):
+        self.max_members = max(1, int(max_members))
+        self.stop_after_entries = (
+            None
+            if stop_after_entries is None
+            else max(1, int(stop_after_entries))
+        )
+        self.max_line_bytes = max(1, int(max_line_bytes))
+        self.manifest = ArchiveManifest()
+        self.saw_files_separator = False
+        self.limit_exceeded = False
+        self.line_limit_exceeded = False
+        self._current_file: Dict[str, str] = {}
+        self._archive_headers: Dict[str, str] = {}
+        self._pending = b""
+        self._parse_cpu_ns = 0
+        self._finished = False
+
+    @property
+    def should_stop(self) -> bool:
+        return self.limit_exceeded or self.line_limit_exceeded
+
+    @property
+    def parse_cpu_ms(self) -> float:
+        return max(0.0, self._parse_cpu_ns / 1_000_000.0)
+
+    def feed_bytes(self, chunk: bytes) -> None:
+        if not chunk or self._finished or self.should_stop:
+            return
+        started_ns = time.perf_counter_ns()
+        try:
+            self._consume_bytes(bytes(chunk))
+        finally:
+            self._parse_cpu_ns += time.perf_counter_ns() - started_ns
+
+    def _consume_bytes(self, chunk: bytes) -> None:
+        data = self._pending + chunk
+        cursor = 0
+        data_length = len(data)
+
+        while cursor < data_length:
+            lf_index = data.find(b"\n", cursor)
+            cr_index = data.find(b"\r", cursor)
+            indexes = [index for index in (lf_index, cr_index) if index >= 0]
+            if not indexes:
+                break
+            separator = min(indexes)
+            if data[separator:separator + 1] == b"\r":
+                if separator + 1 >= data_length:
+                    break
+                line_end = separator + (
+                    2 if data[separator + 1:separator + 2] == b"\n" else 1
+                )
+            else:
+                line_end = separator + 1
+            raw_line = data[cursor:line_end]
+            if len(raw_line) > self.max_line_bytes:
+                self._mark_line_limit()
+                self._pending = b""
+                return
+            self._feed_line(raw_line.decode("utf-8", errors="replace"))
+            cursor = line_end
+            if self.should_stop:
+                self._pending = b""
+                return
+
+        self._pending = data[cursor:]
+        if len(self._pending) > self.max_line_bytes:
+            self._mark_line_limit()
+            self._pending = b""
+
+    def _mark_line_limit(self) -> None:
+        self.line_limit_exceeded = True
+        self.manifest.summary_mode = True
+        self.manifest.early_abort_reason = "manifest_line_limit_exceeded"
+        self.manifest.diagnostics.append(
+            f"Manifest line exceeded {self.max_line_bytes} bytes"
+        )
+
+    def _flush_current(self) -> None:
+        if not self._current_file:
+            return
+        _flush_member(self._current_file, self.manifest, self.max_members)
+        self._current_file = {}
+        if (
+            self.stop_after_entries is not None
+            and self.manifest.entry_count > self.stop_after_entries
+        ):
+            self.limit_exceeded = True
+            self.manifest.summary_mode = True
+            self.manifest.early_abort_reason = "manifest_limit_exceeded"
+            self.manifest.diagnostics.append(
+                "Manifest entry limit exceeded "
+                f"({self.stop_after_entries})"
+            )
+
+    def _feed_line(self, line: str) -> None:
         raw = line.rstrip("\r\n")
         stripped = raw.strip()
 
         if stripped == "----------":
-            if current_file:
-                _flush_member(current_file, manifest, max_members)
-            in_files = True
-            current_file = {}
-            continue
+            self._flush_current()
+            self.saw_files_separator = True
+            self._current_file = {}
+            return
 
-        if not in_files:
+        if not self.saw_files_separator:
             if "=" in raw:
                 key, val = raw.split("=", 1)
                 key = key.strip()
                 val = val[1:] if val.startswith(" ") else val
                 if key not in {"Path", "Symbolic Link", "Hard Link", "Link"}:
                     val = val.strip()
-                archive_headers[key] = val
-                if key == "Type" and not manifest.format:
-                    manifest.format = val.lower()
-            continue
+                self._archive_headers[key] = val
+                if key == "Type" and not self.manifest.format:
+                    self.manifest.format = val.lower()
+            return
 
         if not stripped:
-            if current_file:
-                _flush_member(current_file, manifest, max_members)
-                current_file = {}
-            continue
+            self._flush_current()
+            return
 
         if "=" in raw:
-            # First '=' only — values may contain '='
             key, val = raw.split("=", 1)
             key = key.strip()
             val = val[1:] if val.startswith(" ") else val
             if key not in {"Path", "Symbolic Link", "Hard Link", "Link"}:
                 val = val.strip()
-            current_file[key] = val
+            self._current_file[key] = val
 
-    if current_file:
-        _flush_member(current_file, manifest, max_members)
+    def finish(self) -> ArchiveManifest:
+        if self._finished:
+            return self.manifest
+        started_ns = time.perf_counter_ns()
+        try:
+            if not self.should_stop and self._pending:
+                if len(self._pending) > self.max_line_bytes:
+                    self._mark_line_limit()
+                else:
+                    self._feed_line(
+                        self._pending.decode("utf-8", errors="replace")
+                    )
+            self._pending = b""
+            if not self.should_stop:
+                self._flush_current()
+            if self._archive_headers.get("Encrypted") == "+":
+                self.manifest.is_encrypted = True
+            self.manifest.raw_fields = {
+                key: value
+                for key, value in self._archive_headers.items()
+                if key
+                in (
+                    "Type",
+                    "Physical Size",
+                    "Encrypted",
+                    "Volumes",
+                    "Volume Index",
+                )
+            }
+            self._finished = True
+            return self.manifest
+        finally:
+            self._parse_cpu_ns += time.perf_counter_ns() - started_ns
 
-    if archive_headers.get("Encrypted") == "+":
-        manifest.is_encrypted = True
-    manifest.raw_fields = {
-        k: v
-        for k, v in archive_headers.items()
-        if k in ("Type", "Physical Size", "Encrypted", "Volumes", "Volume Index")
-    }
-    return manifest
+
+def parse_slt(
+    stdout: str, max_members: int = MAX_PARSED_MEMBERS
+) -> ArchiveManifest:
+    """Compatibility wrapper for parsing complete ``7z l -slt`` text."""
+    parser = SltStreamParser(max_members=max_members)
+    parser.feed_bytes(stdout.encode("utf-8", errors="replace"))
+    return parser.finish()
 
 
 def parse_supported_format_extensions(stdout: str) -> Set[str]:
@@ -622,25 +785,89 @@ class SevenZipRunner:
         password: str = None,
         type_switch: str = "",
         timeout: int = 30,
+        manifest_entry_limit: int = MAX_PARSED_MEMBERS,
     ) -> ArchiveManifest:
+        listing_started_ns = time.perf_counter_ns()
+        parse_cpu_ms = 0.0
+        entry_limit = max(
+            1,
+            min(int(manifest_entry_limit), MAX_PARSED_MEMBERS),
+        )
+        parser = SltStreamParser(
+            max_members=entry_limit,
+            stop_after_entries=entry_limit,
+        )
+
+        def listing_error(
+            message: str,
+            category: ErrorCategory,
+            return_code: int,
+            *,
+            early_abort_reason: str = "",
+        ) -> SevenZipError:
+            return SevenZipError(
+                message,
+                category,
+                return_code,
+                listing_wall_ms=(time.perf_counter_ns() - listing_started_ns)
+                / 1_000_000.0,
+                parse_cpu_ms=parse_cpu_ms,
+                listing_attempts=1,
+                early_abort_reason=early_abort_reason,
+            )
+
         cmd = self._build_cmd("l", path, password=password, type_switch=type_switch)
         file_size = os.path.getsize(path) if os.path.exists(path) else 0
         effective_timeout = 120 if file_size > 5 * 1024**3 else timeout
 
         result = self._run_popen(
-            cmd, effective_timeout, capture_limit=MAX_LIST_CAPTURE_BYTES
+            cmd,
+            effective_timeout,
+            capture_limit=MAX_COMMAND_CAPTURE_BYTES,
+            stdout_consumer=parser.feed_bytes,
+            stop_check=lambda: parser.should_stop,
+            capture_stdout=False,
         )
+        if result.stdout:
+            parser.feed_bytes(result.stdout.encode("utf-8", errors="replace"))
+        manifest = parser.finish()
+        parse_cpu_ms = parser.parse_cpu_ms
+        _populate_single_stream_member_path(manifest, path)
+        manifest.used_switch = type_switch
+        manifest.listing_return_code = result.return_code
+
+        if result.consumer_failed:
+            raise listing_error(
+                "Streaming manifest parser failed",
+                ErrorCategory.INTERNAL_ERROR,
+                result.return_code,
+                early_abort_reason="manifest_parser_failed",
+            )
+        if parser.line_limit_exceeded:
+            raise listing_error(
+                "Archive manifest contains an overlong field line",
+                ErrorCategory.VERIFY_FAILED,
+                result.return_code,
+                early_abort_reason="manifest_line_limit_exceeded",
+            )
+        if parser.limit_exceeded:
+            manifest.listing_wall_ms = (
+                time.perf_counter_ns() - listing_started_ns
+            ) / 1_000_000.0
+            manifest.parse_cpu_ms = parse_cpu_ms
+            manifest.listing_attempts = 1
+            return manifest
 
         if result.cancelled:
-            raise SevenZipError("Operation cancelled", ErrorCategory.CANCELLED, -1)
+            raise listing_error("Operation cancelled", ErrorCategory.CANCELLED, -1)
         if result.timed_out:
-            raise SevenZipError(
+            raise listing_error(
                 f"Timeout ({effective_timeout}s)", ErrorCategory.TIMEOUT, -1
             )
 
         diagnostic = result.diagnostic_tail
         if result.bad_password_detected:
-            raise SevenZipError(
+            raise listing_error(
                 "Bad password", ErrorCategory.BAD_PASSWORD, result.return_code
             )
 
@@ -651,12 +878,9 @@ class SevenZipRunner:
                 if "volume" in fatal_kw.lower() or "卷" in fatal_kw
                 else ErrorCategory.CORRUPT_HEADER
             )
-            raise SevenZipError(f"Fatal: {fatal_kw}", cat, result.return_code)
+            raise listing_error(f"Fatal: {fatal_kw}", cat, result.return_code)
 
         if result.return_code in (EXIT_SUCCESS, EXIT_WARNING):
-            manifest = parse_slt(result.stdout)
-            _populate_single_stream_member_path(manifest, path)
-            manifest.used_switch = type_switch
             manifest.listing_return_code = (
                 EXIT_WARNING
                 if result.return_code == EXIT_SUCCESS and result.warning_detected
@@ -664,73 +888,85 @@ class SevenZipRunner:
             )
             if result.warning_detected:
                 manifest.diagnostics.append("7-Zip reported warnings during listing")
-            if result.output_truncated:
-                manifest.summary_mode = True
-                manifest.diagnostics.append(
-                    "7-Zip listing exceeded the bounded capture limit"
-                )
             if not manifest.format:
                 manifest.format = type_switch.lstrip("-t") if type_switch else "unknown"
             # A successful SLT listing with a parsed archive type and an
             # explicit file-record separator but no records is an empty
             # archive.  This is locale-independent; current 7-Zip versions do
             # not necessarily print a ``Files = 0`` summary for it.
-            valid_empty = bool(manifest.format) and "----------" in result.stdout
+            valid_empty = bool(manifest.format) and parser.saw_files_separator
             if not manifest.members and not valid_empty:
-                raise SevenZipError(
+                raise listing_error(
                     "Listing produced no archive members",
                     ErrorCategory.NOT_ARCHIVE,
                     result.return_code,
                 )
-            if manifest.is_encrypted and not password:
-                raise SevenZipError(
-                    "Encrypted archive",
-                    ErrorCategory.BAD_PASSWORD,
-                    result.return_code,
-                )
             if manifest.members:
                 assert_manifest_fields(manifest)
+            manifest.listing_wall_ms = (
+                time.perf_counter_ns() - listing_started_ns
+            ) / 1_000_000.0
+            manifest.parse_cpu_ms = parse_cpu_ms
+            manifest.listing_attempts = 1
             return manifest
 
-        raise SevenZipError(
+        raise listing_error(
             _bound_diag(result.stderr) or f"Read failed Code {result.return_code}",
             ErrorCategory.NOT_ARCHIVE,
             result.return_code,
         )
 
     def list_with_fallback(
-        self, path: str, password: str = None, timeout: int = 30
+        self,
+        path: str,
+        password: str = None,
+        timeout: int = 30,
+        manifest_entry_limit: int = MAX_PARSED_MEMBERS,
     ) -> ArchiveManifest:
         try:
-            return self.list(path, password=password, timeout=timeout)
+            manifest = self.list(
+                path,
+                password=password,
+                timeout=timeout,
+                manifest_entry_limit=manifest_entry_limit,
+            )
+            manifest.listing_attempts = max(1, manifest.listing_attempts)
+            return manifest
         except SevenZipError as first_error:
-            if first_error.category in (
-                ErrorCategory.BAD_PASSWORD,
-                ErrorCategory.CANCELLED,
-                ErrorCategory.TIMEOUT,
+            first_error.listing_attempts = max(1, first_error.listing_attempts)
+            if first_error.category not in (
+                ErrorCategory.NOT_ARCHIVE,
+                ErrorCategory.CORRUPT_HEADER,
             ):
                 raise
             switch = _targeted_type_switch(path)
             if not switch:
                 raise
             try:
-                return self.list(
+                manifest = self.list(
                     path,
                     password=password,
                     type_switch=switch,
                     timeout=timeout,
+                    manifest_entry_limit=manifest_entry_limit,
                 )
+                manifest.listing_wall_ms += first_error.listing_wall_ms
+                manifest.parse_cpu_ms += first_error.parse_cpu_ms
+                manifest.listing_attempts = (
+                    max(1, manifest.listing_attempts)
+                    + first_error.listing_attempts
+                )
+                return manifest
             except SevenZipError as fallback_error:
-                if fallback_error.category in (
-                    ErrorCategory.BAD_PASSWORD,
-                    ErrorCategory.CANCELLED,
-                    ErrorCategory.TIMEOUT,
-                ):
-                    raise
-                last_error = fallback_error
-        if last_error:
-            raise last_error
-        raise SevenZipError("All format probes failed", ErrorCategory.NOT_ARCHIVE)
+                fallback_error.listing_wall_ms += first_error.listing_wall_ms
+                fallback_error.parse_cpu_ms += first_error.parse_cpu_ms
+                fallback_error.listing_attempts = (
+                    max(1, fallback_error.listing_attempts)
+                    + first_error.listing_attempts
+                )
+                if not fallback_error.early_abort_reason:
+                    fallback_error.early_abort_reason = first_error.early_abort_reason
+                raise fallback_error from first_error
 
     def supported_formats(self, timeout: int = 30) -> Set[str]:
         """Query ``7z i`` once per executable and return advertised extensions."""
@@ -798,6 +1034,9 @@ class SevenZipRunner:
         monitor_cb: Optional[Callable[[], bool]] = None,
         merge_stderr: bool = False,
         capture_limit: int = MAX_COMMAND_CAPTURE_BYTES,
+        stdout_consumer: Optional[Callable[[bytes], None]] = None,
+        stop_check: Optional[Callable[[], bool]] = None,
+        capture_stdout: bool = True,
     ) -> SevenZipResult:
         result = SevenZipResult()
         si = _make_startupinfo()
@@ -844,34 +1083,47 @@ class SevenZipRunner:
             stdout_tail = deque(maxlen=MAX_DIAG_LINES)
             stderr_tail = deque(maxlen=MAX_DIAG_LINES)
             capture_lock = threading.Lock()
+            consumer_failed = threading.Event()
             start = time.monotonic()
 
-            def _read_stream(stream, bucket: List[bytes], tail) -> None:
+            def _read_stream(
+                stream,
+                bucket: List[bytes],
+                tail,
+                *,
+                consumer: Optional[Callable[[bytes], None]] = None,
+                capture_enabled: bool = True,
+            ) -> None:
                 captured = 0
-                pending = b""
+                splitter = _BoundedLineSplitter()
                 try:
                     while True:
                         chunk = stream.read(4096)
                         if not chunk:
                             break
-                        with capture_lock:
-                            room = max(0, capture_limit - captured)
-                            if room:
-                                piece = chunk[:room]
-                                bucket.append(piece)
-                                captured += len(piece)
-                            if len(chunk) > room:
-                                result.output_truncated = True
-                        pending += chunk
-                        lines = pending.splitlines(keepends=True)
-                        if lines and not lines[-1].endswith((b"\n", b"\r")):
-                            pending = lines.pop()
-                        else:
-                            pending = b""
-                        for line in lines:
+                        if consumer is not None and not consumer_failed.is_set():
+                            try:
+                                consumer(chunk)
+                            except Exception:
+                                logger.exception("7z stdout consumer failed")
+                                result.consumer_failed = True
+                                consumer_failed.set()
+                        if capture_enabled:
+                            with capture_lock:
+                                room = max(0, capture_limit - captured)
+                                if room:
+                                    piece = chunk[:room]
+                                    bucket.append(piece)
+                                    captured += len(piece)
+                                if len(chunk) > room:
+                                    result.output_truncated = True
+                        for line in splitter.feed(chunk):
                             tail.append(line[-4096:])
+                    pending = splitter.finish()
                     if pending:
                         tail.append(pending[-4096:])
+                    if splitter.truncated:
+                        result.line_truncated = True
                 except (OSError, ValueError):
                     return
 
@@ -880,6 +1132,10 @@ class SevenZipRunner:
                 t = threading.Thread(
                     target=_read_stream,
                     args=(proc.stdout, stdout_chunks, stdout_tail),
+                    kwargs={
+                        "consumer": stdout_consumer,
+                        "capture_enabled": capture_stdout,
+                    },
                     daemon=True,
                 )
                 t.start()
@@ -903,6 +1159,19 @@ class SevenZipRunner:
                 if timeout and timeout > 0 and (time.monotonic() - start) > timeout:
                     terminate_process_tree(proc)
                     result.timed_out = True
+                    break
+                should_stop = consumer_failed.is_set()
+                if not should_stop and stop_check is not None:
+                    try:
+                        should_stop = bool(stop_check())
+                    except Exception:
+                        logger.exception("7z stdout stop check failed")
+                        result.consumer_failed = True
+                        consumer_failed.set()
+                        should_stop = True
+                if should_stop:
+                    terminate_process_tree(proc)
+                    result.consumer_stopped = True
                     break
                 if monitor_cb:
                     try:
@@ -955,8 +1224,8 @@ class SevenZipRunner:
             result.raw_sample = diagnostic.encode(
                 "utf-8", errors="replace"
             )[-MAX_DIAG_BYTES:]
-            # Listing needs the full bounded manifest.  Diagnostics remain a
-            # separate, bounded tail so callers do not accidentally log it all.
+            # Streaming listing consumers own their structured data.  The
+            # retained stdout/stderr text remains bounded diagnostic material.
             result.stdout = decode_output(raw_out, self.encoding_order)
             result.stderr = decode_output(raw_err, self.encoding_order)
             result.diagnostic_tail = _bound_diag(diagnostic)
@@ -968,7 +1237,12 @@ class SevenZipRunner:
                 result.stdout + "\n" + result.diagnostic_tail,
                 result.stderr,
             )
-            if not result.cancelled and not result.timed_out and not result.monitor_stopped:
+            if (
+                not result.cancelled
+                and not result.timed_out
+                and not result.monitor_stopped
+                and not result.consumer_stopped
+            ):
                 result.return_code = proc.returncode if proc.returncode is not None else -1
             elif result.cancelled:
                 result.return_code = EXIT_USER_CANCEL

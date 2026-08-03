@@ -45,6 +45,7 @@ from windows_adapters import flush_file_to_disk, move_no_replace_durable
 from sevenzip import (
     EXIT_SUCCESS,
     EXIT_WARNING,
+    MAX_PARSED_MEMBERS,
     SevenZipError,
     SevenZipRunner,
     classify_return_code,
@@ -197,6 +198,88 @@ class Executor:
         del job.user_notices[:-USER_NOTICE_LIMIT]
         self.event_cb("user_notice", job, str(message))
 
+    @staticmethod
+    def _elapsed_ms(started_ns: int) -> float:
+        return max(0.0, (time.perf_counter_ns() - started_ns) / 1_000_000.0)
+
+    def _record_listing_metrics(
+        self,
+        job: Job,
+        source,
+        measured_wall_ms: float,
+    ) -> None:
+        metrics = job.phase_metrics
+        metrics.listing_wall_ms += max(0.0, float(measured_wall_ms))
+        attempts = max(1, int(getattr(source, "listing_attempts", 0) or 0))
+        metrics.listing_attempts += attempts
+        metrics.parse_cpu_ms += max(
+            0.0,
+            float(getattr(source, "parse_cpu_ms", 0.0) or 0.0),
+        )
+        early_abort_reason = str(
+            getattr(source, "early_abort_reason", "") or ""
+        )
+        if early_abort_reason:
+            metrics.early_abort_reason = early_abort_reason
+
+    def _manifest_entry_limit(self) -> int:
+        manifest_limit = max(
+            1,
+            int(self.config.get("max_manifest_entries", MAX_PARSED_MEMBERS)),
+        )
+        output_limit = max(
+            1,
+            int(self.config.get("max_output_files", MAX_PARSED_MEMBERS)),
+        )
+        return min(manifest_limit, output_limit, MAX_PARSED_MEMBERS)
+
+    def _can_reuse_encrypted_manifest(self, job: Job, target: str) -> bool:
+        manifest = job.manifest
+        if (
+            not job.reuse_manifest_on_password_retry
+            or job.temp_zip
+            or manifest is None
+            or not manifest.is_encrypted
+            or manifest.summary_mode
+            or manifest.early_abort_reason
+            or manifest.entry_count != len(manifest.members)
+            or manifest.listing_return_code not in (EXIT_SUCCESS, EXIT_WARNING)
+        ):
+            return False
+
+        volumes = (
+            list(job.archive_set.volumes)
+            if job.archive_set and job.archive_set.volumes
+            else [target]
+        )
+        for volume in volumes:
+            key = self._source_identity_key(volume)
+            expected = job.source_identities.get(key)
+            if expected is None or self._read_source_identity(volume) != expected:
+                return False
+        return True
+
+    def _timed_extract(self, job: Job, password: Optional[str]) -> ExtractionResult:
+        started_ns = time.perf_counter_ns()
+        job.phase_metrics.extraction_attempts += 1
+        try:
+            return self._extract(job, password)
+        finally:
+            job.phase_metrics.extraction_wall_ms += self._elapsed_ms(started_ns)
+
+    def _publish_phase_metrics(self, job: Job) -> None:
+        summary = job.phase_metrics.summary()
+        logger.debug("Phase metrics task=%s %s", job.task_id, summary)
+        if not job.is_terminal:
+            return
+        job.terminal_diagnostics[:] = [
+            value
+            for value in job.terminal_diagnostics
+            if not str(value).startswith("[TIMING]")
+        ]
+        job.terminal_diagnostics.append(summary)
+        del job.terminal_diagnostics[:-50]
+
     def execute(
         self,
         job: Job,
@@ -218,6 +301,7 @@ class Executor:
                     "executor_overlap",
                 ), None
             self._active_config = dict(self._configured)
+        execution_started_ns = time.perf_counter_ns()
         try:
             return self._run_state_machine(
                 job,
@@ -244,6 +328,8 @@ class Executor:
             job.source_retention_reason = "internal_error"
             return JobState.FAILED, None
         finally:
+            job.phase_metrics.total_wall_ms += self._elapsed_ms(execution_started_ns)
+            self._publish_phase_metrics(job)
             with self._config_lock:
                 self._active_config = None
 
@@ -316,12 +402,23 @@ class Executor:
             job.temp_zip = carved
 
         target = job.temp_zip or job.path
-        manifest, working_password, _listed_password, listing_error = self._try_listing(
-            job,
-            target,
-            manual_password=manual_password,
-            session_main_password=session_main_password,
-        )
+        if self._can_reuse_encrypted_manifest(job, target):
+            manifest = job.manifest
+            working_password = None
+            listing_error = None
+            self._emit(
+                job,
+                JobState.LISTING,
+                "Reusing complete encrypted archive manifest",
+            )
+        else:
+            job.reuse_manifest_on_password_retry = False
+            manifest, working_password, _listed_password, listing_error = self._try_listing(
+                job,
+                target,
+                manual_password=manual_password,
+                session_main_password=session_main_password,
+            )
 
         if (
             manifest is None
@@ -376,7 +473,14 @@ class Executor:
             )
             # A plain host can contain an encrypted appended archive; some 7-Zip
             # versions report that as a password failure rather than NOT_ARCHIVE.
-            if not job.temp_zip and may_scan:
+            if (
+                not job.temp_zip
+                and may_scan
+                and not (
+                    listing_error
+                    and listing_error.category == ErrorCategory.VERIFY_FAILED
+                )
+            ):
                 state = self._prepare_stego_candidate(
                     job, require_embedded=password_failure
                 )
@@ -415,13 +519,48 @@ class Executor:
                 return JobState.PASSWORD_REQUIRED, None
             category = listing_error.category if listing_error else ErrorCategory.NOT_ARCHIVE
             message = str(listing_error) if listing_error else "Cannot open input as archive"
-            return self._fail(job, message, category, "listing_failed"), None
+            retention_reason = (
+                "manifest_line_limit"
+                if listing_error
+                and listing_error.early_abort_reason
+                == "manifest_line_limit_exceeded"
+                else "listing_failed"
+            )
+            return self._fail(job, message, category, retention_reason), None
 
         job.manifest = manifest
+        job.reuse_manifest_on_password_retry = bool(
+            manifest.is_encrypted
+            and not job.temp_zip
+            and not manifest.summary_mode
+            and not manifest.early_abort_reason
+            and manifest.entry_count == len(manifest.members)
+            and manifest.listing_return_code in (EXIT_SUCCESS, EXIT_WARNING)
+        )
         self._apply_manifest_volume_info(job, manifest)
-        preflight_state = self._preflight(job, manifest)
+        preflight_started_ns = time.perf_counter_ns()
+        try:
+            preflight_state = self._preflight(job, manifest)
+        finally:
+            job.phase_metrics.preflight_wall_ms += self._elapsed_ms(
+                preflight_started_ns
+            )
         if preflight_state is not None:
             return preflight_state, None
+
+        if manifest.is_encrypted and not self._password_candidates(
+            manual_password,
+            session_main_password,
+            include_no_password=False,
+        ):
+            job.password_candidates_exhausted = True
+            self._emit(
+                job,
+                JobState.PASSWORD_REQUIRED,
+                "Password required or all supplied candidates failed",
+                error_category=ErrorCategory.BAD_PASSWORD,
+            )
+            return JobState.PASSWORD_REQUIRED, None
 
         self._emit(
             job,
@@ -462,6 +601,8 @@ class Executor:
             )
             return JobState.PASSWORD_REQUIRED, None
 
+        job.reuse_manifest_on_password_retry = False
+
         if (
             extraction.quota_exceeded
             and job.nested_depth > 0
@@ -475,7 +616,13 @@ class Executor:
                 "nested_output_quota_runtime",
             ), None
 
-        self._scan_extracted_tree(job)
+        output_scan_started_ns = time.perf_counter_ns()
+        try:
+            self._scan_extracted_tree(job)
+        finally:
+            job.phase_metrics.output_scan_wall_ms += self._elapsed_ms(
+                output_scan_started_ns
+            )
         has_recoverable_output = bool(
             extraction.extracted_paths
             or (
@@ -544,9 +691,19 @@ class Executor:
                 JobState.PASSWORD_ATTEMPT if password is not None else JobState.LISTING,
                 f"Archive listing attempt #{job.attempt_count}",
             )
+            listing_started_ns = time.perf_counter_ns()
             try:
-                manifest = self.runner.list_with_fallback(target, password=password)
+                manifest = self.runner.list_with_fallback(
+                    target,
+                    password=password,
+                    manifest_entry_limit=self._manifest_entry_limit(),
+                )
             except SevenZipError as exc:
+                self._record_listing_metrics(
+                    job,
+                    exc,
+                    self._elapsed_ms(listing_started_ns),
+                )
                 last_error = exc
                 if exc.category == ErrorCategory.BAD_PASSWORD:
                     continue
@@ -554,6 +711,11 @@ class Executor:
                     self._mark_interrupted(job, "Cancelled during archive listing")
                 return None, None, None, exc
 
+            self._record_listing_metrics(
+                job,
+                manifest,
+                self._elapsed_ms(listing_started_ns),
+            )
             job.password_candidates_exhausted = False
             return manifest, password, password if password else None, None
 
@@ -563,6 +725,8 @@ class Executor:
         self,
         manual_password: Optional[str],
         session_main_password: Optional[str],
+        *,
+        include_no_password: bool = True,
     ) -> List[Optional[str]]:
         candidates: List[Optional[str]] = []
         seen: Set[str] = set()
@@ -580,8 +744,9 @@ class Executor:
             candidates.append(normalized)
 
         add(manual_password)
-        add(None)
         add(session_main_password)
+        if include_no_password:
+            add(None)
         for value in self._read_password_file():
             add(value)
         return candidates
@@ -622,20 +787,21 @@ class Executor:
     ) -> Tuple[ExtractionResult, Optional[str]]:
         manifest = job.manifest
         if manifest is None or not manifest.is_encrypted:
-            extraction = self._extract(job, listing_password)
-            promoted = (
-                listing_password
-                if listing_password and extraction.success
-                else None
-            )
-            return extraction, promoted
+            extraction = self._timed_extract(job, listing_password)
+            return extraction, None
 
         candidates: List[Optional[str]] = []
         seen: Set[Optional[str]] = set()
         for candidate in [
             listing_password,
-            *self._password_candidates(manual_password, session_main_password),
+            *self._password_candidates(
+                manual_password,
+                session_main_password,
+                include_no_password=False,
+            ),
         ]:
+            if candidate is None:
+                continue
             if candidate in seen:
                 continue
             seen.add(candidate)
@@ -654,7 +820,7 @@ class Executor:
                 JobState.PASSWORD_ATTEMPT,
                 f"Encrypted extraction attempt #{job.attempt_count}",
             )
-            extraction = self._extract(job, password)
+            extraction = self._timed_extract(job, password)
             job.extraction_result = extraction
             if extraction.error_category != ErrorCategory.BAD_PASSWORD:
                 promoted = password if password and extraction.success else None
@@ -864,36 +1030,95 @@ class Executor:
         self, job: Job, manifest: ArchiveManifest
     ) -> Optional[JobState]:
         entry_count = manifest.entry_count or len(manifest.members)
-        manifest_limit = max(1, int(self.config.get("max_manifest_entries", 200_000)))
+        manifest_limit = max(
+            1,
+            int(self.config.get("max_manifest_entries", MAX_PARSED_MEMBERS)),
+        )
         output_file_limit = max(1, int(self.config.get("max_output_files", 200_000)))
+        stopped_at_entry_limit = (
+            manifest.early_abort_reason == "manifest_limit_exceeded"
+        )
+        effective_listing_limit = min(
+            manifest_limit,
+            output_file_limit,
+            MAX_PARSED_MEMBERS,
+        )
 
-        if entry_count > manifest_limit:
+        if entry_count > manifest_limit or (
+            stopped_at_entry_limit
+            and manifest_limit == effective_listing_limit
+        ):
+            count_text = (
+                f"至少 {entry_count}"
+                if stopped_at_entry_limit
+                else str(entry_count)
+            )
+            english_count = (
+                f"at least {entry_count}"
+                if stopped_at_entry_limit
+                else str(entry_count)
+            )
             return self._fail(
                 job,
                 (
                     "安全拦截：压缩包清单包含 "
-                    f"{entry_count} 个条目，超过 max_manifest_entries="
+                    f"{count_text} 个条目，超过 max_manifest_entries="
                     f"{manifest_limit}；已跳过且未解压。 / Safety block: the "
-                    f"archive manifest has {entry_count} entries, exceeding "
+                    f"archive manifest has {english_count} entries, exceeding "
                     f"max_manifest_entries={manifest_limit}; it was skipped "
                     "without extraction."
                 ),
                 ErrorCategory.VERIFY_FAILED,
                 "manifest_limit",
             )
-        if entry_count > output_file_limit:
+        if entry_count > output_file_limit or (
+            stopped_at_entry_limit
+            and output_file_limit == effective_listing_limit
+        ):
+            count_text = (
+                f"至少 {entry_count}" if stopped_at_entry_limit else str(entry_count)
+            )
+            english_count = (
+                f"at least {entry_count}"
+                if stopped_at_entry_limit
+                else str(entry_count)
+            )
             return self._fail(
                 job,
                 (
                     "资源拦截：压缩包可能生成 "
-                    f"{entry_count} 个项目，超过 max_output_files="
+                    f"{count_text} 个项目，超过 max_output_files="
                     f"{output_file_limit}；已跳过且未解压。 / Resource block: "
-                    f"the archive may create {entry_count} items, exceeding "
+                    f"the archive may create {english_count} items, exceeding "
                     f"max_output_files={output_file_limit}; it was skipped "
                     "without extraction."
                 ),
                 ErrorCategory.DISK_FULL,
                 "output_file_quota",
+            )
+        if entry_count > MAX_PARSED_MEMBERS or stopped_at_entry_limit:
+            count_text = (
+                f"至少 {entry_count}" if stopped_at_entry_limit else str(entry_count)
+            )
+            english_count = (
+                f"at least {entry_count}"
+                if stopped_at_entry_limit
+                else str(entry_count)
+            )
+            return self._fail(
+                job,
+                (
+                    "安全拦截：压缩包清单包含 "
+                    f"{count_text} 个条目，超过内部清单解析安全上限 "
+                    f"{MAX_PARSED_MEMBERS}；即使配置值更高也不会绕过此上限，"
+                    "已跳过且未解压。 / Safety block: the archive manifest has "
+                    f"{english_count} entries, exceeding the internal manifest "
+                    f"parsing safety limit of {MAX_PARSED_MEMBERS}; higher "
+                    "configuration values do not bypass this limit, and the "
+                    "archive was skipped without extraction."
+                ),
+                ErrorCategory.VERIFY_FAILED,
+                "manifest_parser_limit",
             )
         if manifest.summary_mode:
             # A truncated/summary manifest cannot prove path confinement for

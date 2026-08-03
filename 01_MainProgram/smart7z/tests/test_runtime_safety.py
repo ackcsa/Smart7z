@@ -92,10 +92,20 @@ class TestFallbackPolicy(unittest.TestCase):
         runner = SevenZipRunner("7z.exe")
         calls = []
 
-        def fake_list(path, password=None, type_switch="", timeout=30):
+        def fake_list(
+            path,
+            password=None,
+            type_switch="",
+            timeout=30,
+            manifest_entry_limit=sevenzip.MAX_PARSED_MEMBERS,
+        ):
+            del path, password, timeout, manifest_entry_limit
             calls.append(type_switch)
             if not type_switch:
-                raise SevenZipError("not archive")
+                raise SevenZipError(
+                    "not archive",
+                    ErrorCategory.NOT_ARCHIVE,
+                )
             return ArchiveManifest(format="zip")
 
         with mock.patch.object(runner, "list", side_effect=fake_list):
@@ -111,6 +121,130 @@ class TestFallbackPolicy(unittest.TestCase):
             with self.assertRaises(SevenZipError):
                 runner.list_with_fallback("not-an-archive.bin")
         self.assertEqual(listing.call_count, 1)
+
+    def test_internal_listing_failure_is_not_retried_as_a_format_probe(self):
+        runner = SevenZipRunner("7z.exe")
+        with mock.patch.object(
+            runner,
+            "list",
+            side_effect=SevenZipError(
+                "parser failed",
+                ErrorCategory.INTERNAL_ERROR,
+            ),
+        ) as listing:
+            with self.assertRaises(SevenZipError):
+                runner.list_with_fallback("archive.zip")
+
+        self.assertEqual(listing.call_count, 1)
+
+
+class TestExecutorPasswordsAndMetrics(unittest.TestCase):
+    @staticmethod
+    def _executor(temp_dir, runner=None):
+        config = dict(DEFAULT_CONFIG)
+        config["temp_dir"] = temp_dir
+        config["password_file"] = os.path.join(temp_dir, "code.txt")
+        return Executor(runner or DummyRunner(), config)
+
+    def test_password_candidates_prioritize_batch_success_before_no_password(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            Path(temp_dir, "code.txt").write_text(
+                "file-first\nfile-second\n",
+                encoding="utf-8",
+            )
+            executor = self._executor(temp_dir)
+
+            self.assertEqual(
+                executor._password_candidates("manual", "batch-success"),
+                [
+                    "manual",
+                    "batch-success",
+                    None,
+                    "file-first",
+                    "file-second",
+                ],
+            )
+            self.assertEqual(
+                executor._password_candidates(
+                    "manual",
+                    "batch-success",
+                    include_no_password=False,
+                ),
+                ["manual", "batch-success", "file-first", "file-second"],
+            )
+
+    def test_encrypted_extraction_skips_guaranteed_no_password_attempt(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            Path(temp_dir, "code.txt").write_text("file-password\n", encoding="utf-8")
+            executor = self._executor(temp_dir)
+            job = Job(path=os.path.join(temp_dir, "encrypted.zip"))
+            job.manifest = ArchiveManifest(is_encrypted=True)
+            attempted = []
+
+            def fake_extract(_job, password):
+                attempted.append(password)
+                if password == "batch-success":
+                    return ExtractionResult(success=True, return_code=0)
+                return ExtractionResult(error_category=ErrorCategory.BAD_PASSWORD)
+
+            with (
+                mock.patch.object(executor, "_extract", side_effect=fake_extract),
+                mock.patch.object(executor, "_cleanup_temp_root", return_value=True),
+            ):
+                extraction, promoted = executor._extract_with_password_candidates(
+                    job,
+                    listing_password=None,
+                    manual_password="manual-wrong",
+                    session_main_password="batch-success",
+                )
+
+            self.assertTrue(extraction.success)
+            self.assertEqual(promoted, "batch-success")
+            self.assertEqual(attempted, ["manual-wrong", "batch-success"])
+            self.assertNotIn(None, attempted)
+            self.assertEqual(job.phase_metrics.extraction_attempts, 2)
+
+    def test_password_that_unlocked_headers_is_extracted_first(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executor = self._executor(temp_dir)
+            job = Job(path=os.path.join(temp_dir, "header-encrypted.7z"))
+            job.manifest = ArchiveManifest(is_encrypted=True)
+            attempted = []
+
+            def fake_extract(_job, password):
+                attempted.append(password)
+                return ExtractionResult(success=True, return_code=0)
+
+            with mock.patch.object(executor, "_extract", side_effect=fake_extract):
+                extraction, promoted = executor._extract_with_password_candidates(
+                    job,
+                    listing_password="known-good",
+                    manual_password="manual-wrong",
+                    session_main_password="batch-wrong",
+                )
+
+            self.assertTrue(extraction.success)
+            self.assertEqual(promoted, "known-good")
+            self.assertEqual(attempted, ["known-good"])
+
+    def test_terminal_execution_publishes_bounded_timing_summary(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executor = self._executor(temp_dir)
+            job = Job(path=os.path.join(temp_dir, "missing.zip"))
+
+            state, promoted = executor.execute(job)
+
+            self.assertEqual(state, JobState.FAILED)
+            self.assertIsNone(promoted)
+            self.assertGreaterEqual(job.phase_metrics.total_wall_ms, 0.0)
+            timing = [
+                item
+                for item in job.terminal_diagnostics
+                if item.startswith("[TIMING]")
+            ]
+            self.assertEqual(len(timing), 1)
+            self.assertIn("list=0.0ms/0", timing[0])
+            self.assertIn("total=", timing[0])
 
 
 class TestSupportedFormats(unittest.TestCase):
@@ -508,6 +642,27 @@ class TestPreflightAndCommit(unittest.TestCase):
         self.assertEqual(job.source_retention_reason, "manifest_limit")
         self.assertIn("超过 max_manifest_entries=1", job.error_message)
         self.assertIn("skipped without extraction", job.error_message)
+
+    def test_internal_manifest_cap_is_reported_when_config_is_higher(self):
+        executor = self.make_executor(
+            max_manifest_entries=sevenzip.MAX_PARSED_MEMBERS * 2,
+            max_output_files=sevenzip.MAX_PARSED_MEMBERS * 3,
+        )
+        manifest = ArchiveManifest(
+            entry_count=sevenzip.MAX_PARSED_MEMBERS + 1,
+            early_abort_reason="manifest_limit_exceeded",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            job = Job(path=os.path.join(temp_dir, "huge.zip"))
+            state = executor._preflight(job, manifest)
+
+        self.assertEqual(state, JobState.FAILED)
+        self.assertEqual(job.source_retention_reason, "manifest_parser_limit")
+        self.assertIn(
+            f"内部清单解析安全上限 {sevenzip.MAX_PARSED_MEMBERS}",
+            job.error_message,
+        )
+        self.assertNotIn("max_manifest_entries=400000", job.error_message)
 
     def test_normal_windows_compatible_manifest_is_not_blocked(self):
         executor = self.make_executor()

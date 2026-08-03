@@ -187,6 +187,226 @@ class TestRealSevenZipPipeline(unittest.TestCase):
             self.assertEqual(Path(password_file).read_text(encoding="utf-8").strip(), password)
             executor.cleanup_job_artifacts(job, terminal=True)
 
+    def test_visible_header_encrypted_zip_reuses_no_password_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = os.path.join(temp_dir, "secret.txt")
+            archive = os.path.join(temp_dir, "visible-header.zip")
+            destination = os.path.join(temp_dir, "output")
+            password_file = os.path.join(temp_dir, "code.txt")
+            password = "visible-secret"
+            Path(source).write_text("private", encoding="utf-8")
+            Path(password_file).write_text(
+                f"wrong-password\n{password}\n",
+                encoding="utf-8",
+            )
+            runner = SevenZipRunner(SEVENZIP_PATH)
+            created = runner.raw(
+                ["a", "-tzip", archive, source, f"-p{password}", "-mem=AES256", "-y"],
+                timeout=30,
+            )
+            self.assertEqual(created.return_code, 0, created.diagnostic_tail)
+
+            config = {
+                **DEFAULT_CONFIG,
+                "7z_path": SEVENZIP_PATH,
+                "extract_to_source": False,
+                "target_dir": destination,
+                "temp_dir": os.path.join(temp_dir, "staging"),
+                "extract_mode": "staging",
+                "wait_disk_space": False,
+                "cleanup_policy": "keep",
+                "password_file": password_file,
+            }
+            job = Job(path=archive, original_path=archive, explicit_input=True)
+            executor = Executor(runner, config)
+
+            state, promoted = executor.execute(job)
+
+            self.assertEqual(state, JobState.COMPLETE, job.error_message)
+            self.assertEqual(promoted, password)
+            self.assertEqual(job.phase_metrics.listing_attempts, 1)
+            self.assertEqual(job.phase_metrics.extraction_attempts, 2)
+            self.assertEqual(
+                Path(password_file).read_text(encoding="utf-8").splitlines()[0],
+                password,
+            )
+            self.assertTrue(
+                any(
+                    item.startswith("[TIMING]")
+                    for item in job.terminal_diagnostics
+                )
+            )
+            executor.cleanup_job_artifacts(job, terminal=True)
+
+    def test_manual_password_retry_reuses_unchanged_encrypted_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = os.path.join(temp_dir, "secret.txt")
+            archive = os.path.join(temp_dir, "prompt-retry.zip")
+            destination = os.path.join(temp_dir, "output")
+            password = "prompt-secret"
+            Path(source).write_text("private", encoding="utf-8")
+            runner = SevenZipRunner(SEVENZIP_PATH)
+            created = runner.raw(
+                ["a", "-tzip", archive, source, f"-p{password}", "-mem=AES256", "-y"],
+                timeout=30,
+            )
+            self.assertEqual(created.return_code, 0, created.diagnostic_tail)
+
+            config = {
+                **DEFAULT_CONFIG,
+                "7z_path": SEVENZIP_PATH,
+                "extract_to_source": False,
+                "target_dir": destination,
+                "temp_dir": os.path.join(temp_dir, "staging"),
+                "extract_mode": "staging",
+                "wait_disk_space": False,
+                "cleanup_policy": "keep",
+                "password_file": os.path.join(temp_dir, "empty-code.txt"),
+            }
+            job = Job(path=archive, original_path=archive, explicit_input=True)
+            executor = Executor(runner, config)
+
+            first_state, first_promoted = executor.execute(job)
+            self.assertEqual(first_state, JobState.PASSWORD_REQUIRED)
+            self.assertIsNone(first_promoted)
+            self.assertEqual(job.phase_metrics.listing_attempts, 1)
+            self.assertEqual(job.phase_metrics.extraction_attempts, 0)
+
+            second_state, second_promoted = executor.execute(
+                job,
+                manual_password=password,
+            )
+
+            self.assertEqual(second_state, JobState.COMPLETE, job.error_message)
+            self.assertEqual(second_promoted, password)
+            self.assertEqual(job.phase_metrics.listing_attempts, 1)
+            self.assertEqual(job.phase_metrics.extraction_attempts, 1)
+            executor.cleanup_job_artifacts(job, terminal=True)
+
+    def test_password_retry_relists_when_archive_changed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = os.path.join(temp_dir, "secret.txt")
+            archive = os.path.join(temp_dir, "changed-before-retry.zip")
+            destination = os.path.join(temp_dir, "output")
+            first_password = "first-secret"
+            second_password = "second-secret"
+            Path(source).write_text("first", encoding="utf-8")
+            runner = SevenZipRunner(SEVENZIP_PATH)
+            first_created = runner.raw(
+                [
+                    "a",
+                    "-tzip",
+                    archive,
+                    source,
+                    f"-p{first_password}",
+                    "-mem=AES256",
+                    "-y",
+                ],
+                timeout=30,
+            )
+            self.assertEqual(first_created.return_code, 0, first_created.diagnostic_tail)
+
+            config = {
+                **DEFAULT_CONFIG,
+                "7z_path": SEVENZIP_PATH,
+                "extract_to_source": False,
+                "target_dir": destination,
+                "temp_dir": os.path.join(temp_dir, "staging"),
+                "extract_mode": "staging",
+                "wait_disk_space": False,
+                "cleanup_policy": "keep",
+                "password_file": os.path.join(temp_dir, "empty-code.txt"),
+            }
+            job = Job(path=archive, original_path=archive, explicit_input=True)
+            executor = Executor(runner, config)
+            first_state, _first_promoted = executor.execute(job)
+            self.assertEqual(first_state, JobState.PASSWORD_REQUIRED)
+            self.assertEqual(job.phase_metrics.listing_attempts, 1)
+
+            os.remove(archive)
+            Path(source).write_text("second payload is longer", encoding="utf-8")
+            second_created = runner.raw(
+                [
+                    "a",
+                    "-tzip",
+                    archive,
+                    source,
+                    f"-p{second_password}",
+                    "-mem=AES256",
+                    "-y",
+                ],
+                timeout=30,
+            )
+            self.assertEqual(second_created.return_code, 0, second_created.diagnostic_tail)
+
+            second_state, second_promoted = executor.execute(
+                job,
+                manual_password=second_password,
+            )
+
+            self.assertEqual(second_state, JobState.COMPLETE, job.error_message)
+            self.assertEqual(second_promoted, second_password)
+            self.assertEqual(job.phase_metrics.listing_attempts, 2)
+            self.assertEqual(
+                Path(job.final_destination).read_text(encoding="utf-8"),
+                "second payload is longer",
+            )
+            executor.cleanup_job_artifacts(job, terminal=True)
+
+    def test_manifest_entry_limit_blocks_before_extraction(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive = os.path.join(temp_dir, "too-many.zip")
+            destination = os.path.join(temp_dir, "output")
+            self._make_zip(
+                archive,
+                {
+                    "one.txt": "1",
+                    "two.txt": "2",
+                    "three.txt": "3",
+                },
+            )
+
+            state, _promoted, job = self._execute(
+                archive,
+                destination,
+                "staging",
+                max_manifest_entries=2,
+            )
+
+            self.assertEqual(state, JobState.FAILED)
+            self.assertEqual(job.source_retention_reason, "manifest_limit")
+            self.assertEqual(job.phase_metrics.early_abort_reason, "manifest_limit_exceeded")
+            self.assertEqual(job.phase_metrics.extraction_attempts, 0)
+            self.assertEqual(job.manifest.entry_count, 3)
+            self.assertIn("at least 3", job.error_message)
+
+    def test_output_file_limit_also_stops_listing_early(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive = os.path.join(temp_dir, "too-many-outputs.zip")
+            destination = os.path.join(temp_dir, "output")
+            self._make_zip(
+                archive,
+                {
+                    "one.txt": "1",
+                    "two.txt": "2",
+                    "three.txt": "3",
+                },
+            )
+
+            state, _promoted, job = self._execute(
+                archive,
+                destination,
+                "staging",
+                max_manifest_entries=100,
+                max_output_files=2,
+            )
+
+            self.assertEqual(state, JobState.FAILED)
+            self.assertEqual(job.source_retention_reason, "output_file_quota")
+            self.assertEqual(job.phase_metrics.early_abort_reason, "manifest_limit_exceeded")
+            self.assertEqual(job.phase_metrics.extraction_attempts, 0)
+            self.assertIn("max_output_files=2", job.error_message)
+
     def test_structural_zip_candidate_has_exact_validated_span(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             archive = os.path.join(temp_dir, "payload.zip")

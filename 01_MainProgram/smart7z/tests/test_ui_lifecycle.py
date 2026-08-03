@@ -1356,6 +1356,93 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
         self.assertEqual(raised.exception.code, 1)
         showerror.assert_called_once()
 
+    def test_server_stopping_is_retryable_only_for_shutdown_handoff(self):
+        result = ui_app.IPCForwardResult(
+            ui_app.IPC_FORWARD_REJECTED,
+            "server_stopping",
+            server_reached=True,
+        )
+
+        with mock.patch.object(ui_app.messagebox, "showerror") as showerror:
+            self.assertEqual(ui_app._forward_exit_code(result), 1)
+            self.assertIsNone(
+                ui_app._forward_exit_code(
+                    result,
+                    allow_shutdown_handoff=True,
+                )
+            )
+
+        showerror.assert_called_once()
+
+    def test_run_app_takes_over_after_server_stopping_releases_mutex(self):
+        stopping = ui_app.IPCForwardResult(
+            ui_app.IPC_FORWARD_REJECTED,
+            "server_stopping",
+            server_reached=True,
+        )
+        mutex_handle = object()
+        root = _FakeRoot()
+        with tempfile.TemporaryDirectory() as temp:
+            with _patched_ui(_test_config(temp)):
+                with (
+                    mock.patch.object(ui_app.sys, "platform", "win32"),
+                    mock.patch.object(
+                        ui_app,
+                        "forward_to_existing",
+                        return_value=stopping,
+                    ) as forward,
+                    mock.patch.object(
+                        ui_app,
+                        "create_mutex",
+                        side_effect=[None, mutex_handle],
+                    ) as mutex,
+                    mock.patch.object(ui_app, "close_mutex", return_value=True) as close,
+                    mock.patch.object(ui_app, "create_root", return_value=root),
+                    mock.patch.object(
+                        ui_app.BoundedIPCServer,
+                        "start",
+                        return_value=True,
+                    ),
+                ):
+                    ui_app.run_app([])
+
+        self.assertEqual(forward.call_count, 2)
+        self.assertEqual(mutex.call_count, 2)
+        close.assert_called_once_with(mutex_handle)
+        self.assertTrue(root.destroyed)
+
+    def test_run_app_retries_server_stopping_then_forwards_once(self):
+        stopping = ui_app.IPCForwardResult(
+            ui_app.IPC_FORWARD_REJECTED,
+            "server_stopping",
+            server_reached=True,
+        )
+        accepted = ui_app.IPCForwardResult(
+            ui_app.IPC_FORWARD_ACCEPTED,
+            "accepted",
+            server_reached=True,
+        )
+        with (
+            mock.patch.object(ui_app.sys, "platform", "win32"),
+            mock.patch.object(
+                ui_app,
+                "forward_to_existing",
+                side_effect=[stopping, accepted],
+            ) as forward,
+            mock.patch.object(ui_app, "create_mutex", return_value=None) as mutex,
+            mock.patch.object(
+                ui_app,
+                "create_root",
+                side_effect=AssertionError("accepted retry must not create Tk"),
+            ),
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                ui_app.run_app([])
+
+        self.assertEqual(raised.exception.code, 0)
+        self.assertEqual(forward.call_count, 2)
+        mutex.assert_called_once_with()
+
     def test_run_app_waits_for_starting_instance_and_forwards_without_root(self):
         unavailable = ui_app.IPCForwardResult(
             ui_app.IPC_FORWARD_UNAVAILABLE,

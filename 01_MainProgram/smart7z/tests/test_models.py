@@ -49,6 +49,19 @@ class TestJob(unittest.TestCase):
         self.assertTrue(d['extract_to_source_override'])
         self.assertIn('task_id', d)
 
+    def test_runtime_phase_metrics_are_not_serialized(self):
+        job = Job(path="/test/archive.zip")
+        job.phase_metrics.listing_wall_ms = 12.5
+        job.phase_metrics.early_abort_reason = "manifest_limit_exceeded"
+
+        serialized = job.to_task_dict()
+
+        self.assertNotIn("phase_metrics", serialized)
+        self.assertNotIn("reuse_manifest_on_password_retry", serialized)
+        restored = Job.from_task_dict(serialized)
+        self.assertEqual(restored.phase_metrics.listing_wall_ms, 0.0)
+        self.assertEqual(restored.phase_metrics.early_abort_reason, "")
+
     def test_job_from_task_dict(self):
         d = {
             'path': '/test/archive.zip',

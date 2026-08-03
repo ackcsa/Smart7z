@@ -731,8 +731,8 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
         <div class="flow">
           <div class="flow-row">
             <span class="node">本次手动输入</span><span class="arrow">→</span>
-            <span class="node">无密码</span><span class="arrow">→</span>
-            <span class="node">主密码</span><span class="arrow">→</span>
+            <span class="node">本批次成功密码</span><span class="arrow">→</span>
+            <span class="node">无密码探测</span><span class="arrow">→</span>
             <span class="node">密码文件逐行候选</span><span class="arrow">→</span>
             <span class="node">弹出密码输入</span>
           </div>
@@ -741,7 +741,9 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
         <ul class="checklist">
           <li>密码文件使用纯文本，一行一个密码；当前配置默认文件名是 <code>code.txt</code>，相对路径会按程序目录解析。</li>
           <li>同一批加密包共用一个密码时，可先填“主密码”，再开始队列。</li>
-          <li>如果弹出“需要密码”，输入后任务会重新入队；若成功，该密码会提升到密码文件顶部，方便后续任务命中。</li>
+          <li>一个密码成功后，会成为本批次后续加密包的优先候选，并提升到密码文件顶部；密码值不会写入任务记录或运行日志。</li>
+          <li>文件头可见的加密包会复用无密码状态下已经取得的完整清单；等待手动密码期间源文件未变化时，重新入队也不会再次读取清单。文件头加密、清单不完整或源文件已变化时仍会重新列出。</li>
+          <li>已经确认加密的包在解压阶段不会再做必然失败的无密码尝试。若列清单时某个密码已经成功解锁文件头，解压会先尝试这个已验证密码。</li>
           <li>点击“跳过”会把该任务标为 <code>SKIPPED</code>，源文件不会被清理。</li>
         </ul>
         <div class="notice warn">
@@ -940,13 +942,13 @@ python smart7z.py -- --queue</code></pre>
         <section id="single-instance">
           <h3>单实例 IPC</h3>
           <p>程序启动后会监听一个仅供本机使用的进程间通信（IPC）端口。再次启动 Smart7z 时，新进程读取状态文件并校验令牌，然后把路径、启动方式、清理策略和输出位置要求发送到已有窗口。请求有消息大小和路径数量限制，只接受已经存在的本地绝对路径。</p>
-          <p>Windows 启动阶段还使用命名互斥量保证只有一个进程能够创建窗口、调度器和恢复日志。资源管理器多选文件后执行右键菜单时，Windows 可能为每个选中项分别启动一个短生命周期辅助进程；未取得启动权的进程会等待主实例建立 IPC，再把各自收到的路径转交给同一个窗口，不会同时打开恢复日志。若最先启动的进程在 IPC 就绪前退出，其中一个等待进程会取得启动权并接管。</p>
+          <p>Windows 启动阶段还使用命名互斥量保证只有一个进程能够创建窗口、调度器和恢复日志。资源管理器多选文件后执行右键菜单时，Windows 可能为每个选中项分别启动一个短生命周期辅助进程；未取得启动权的进程会等待主实例建立 IPC，再把各自收到的路径转交给同一个窗口，不会同时打开恢复日志。若已有实例正在关闭，新进程会在有界时间内继续重试转交并等待互斥量释放；旧实例退出后由取得互斥量的新进程接管，不会在恢复日志仍被占用时启动第二个调度器。</p>
           <h4 id="ipc-results">转发结果与新进程的处理</h4>
           <table>
             <thead><tr><th>结果</th><th>含义</th><th>新进程如何处理</th></tr></thead>
             <tbody>
               <tr><td><code>accepted</code></td><td>已有实例已登记请求，或者窗口已成功切到前台。</td><td>新进程正常退出；目录请求随后按<a href="#folder-cancel">扫描和“待接纳”规则</a>处理。</td></tr>
-              <tr><td><code>rejected</code></td><td>请求到达已有实例，但队列已满、程序正在关闭，或请求未能加入队列。</td><td>新进程以非零状态退出，不再打开第二个窗口，避免重复处理同一批路径。</td></tr>
+              <tr><td><code>rejected</code></td><td>请求到达已有实例，但队列已满、程序正在关闭，或请求未能加入队列。</td><td>队列拒绝等确定失败会以非零状态退出；仅当原因为 <code>server_stopping</code> 时，Windows 新进程会继续有界重试并等待接管，避免关闭竞态丢失右键请求。</td></tr>
               <tr><td><code>indeterminate</code></td><td>请求已到达，但新进程没有收到可靠确认，无法判断是否已加入队列。</td><td>不打开第二个窗口。先检查现有窗口的队列，再决定是否重试。</td></tr>
               <tr><td><code>unavailable</code></td><td>找不到可信的现有实例状态，或无法连接。</td><td>先争取启动互斥量；已有进程正在启动时最多等待 15 秒并重试转交，前一进程退出时则接管。等待超时不会创建第二个调度器。</td></tr>
             </tbody>
@@ -964,6 +966,7 @@ python smart7z.py -- --queue</code></pre>
             </tbody>
           </table>
           <p>两个菜单项都会自动开始处理。右键选择目录时，程序先扫描该目录，再把找到的压缩包逐项加入队列；清理策略和输出位置要求会传给扫描得到的任务及其嵌套任务。框选多个压缩文件执行同一个菜单项时，资源管理器可能逐个启动辅助进程，但这些请求会在启动互斥阶段串行化并分别转交到唯一窗口，所选文件不会因为恢复日志锁冲突而启动失败。</p>
+          <p>程序在解压前仍会读取完整成员清单，以便在写文件前检查条目数、输出大小、路径穿越、Windows 名称冲突、链接、备用数据流和分卷信息。清单现在直接按 7-Zip 输出流解析，不再保留整份大文本；正常包的主要收益是降低峰值内存，条目数超过 <code>max_manifest_entries</code> 或 <code>max_output_files</code> 时会在第“上限 + 1”条停止 7-Zip，从而避免继续扫描超限清单。</p>
           <h4>右键窗口何时自动关闭</h4>
           <p>只有“最初由资源管理器右键菜单创建”的独立窗口具备自动关闭资格。程序会等待本批右键请求停止到达，并确认所有已接纳任务均为 <code>COMPLETE</code>、目录扫描和“待接纳”列表均已结束、调度器没有当前任务或延后任务、也没有密码或内嵌 ZIP 候选提示，随后按正常关闭流程保存当前配置并退出。</p>
           <ul class="checklist">
@@ -1002,7 +1005,7 @@ python smart7z.py -- --queue</code></pre>
             <tr><td>启动时报找不到 7z.exe</td><td>配置路径无效，系统标准路径也找不到 7-Zip。</td><td>安装 7-Zip，或把 <code>7z.exe</code> 放进程序目录，再重启。</td><td><a href="#install">安装与运行</a></td></tr>
             <tr><td>点击“开始”后提示配置保存失败</td><td>目标目录、暂存目录或密码文件路径无效，或者便携模式下的 EXE 目录只读。</td><td>改用可写目录。安装模式下检查 <code>%LOCALAPPDATA%/Smart7z</code>；便携模式下检查 EXE 目录，或移除 <code>portable.flag</code>。</td><td><a href="#install">安装与运行</a></td></tr>
             <tr><td>任务一直显示 <code>SPACE_WAIT</code></td><td>目标盘或暂存盘空间不足。</td><td>释放空间、改用其他目标目录，或取消任务。</td><td><a href="#options-space">空间等待</a></td></tr>
-            <tr><td>需要密码</td><td>无密码、主密码和密码文件候选都失败。</td><td>在提示区输入正确密码；不确定时跳过。</td><td><a href="#workflow-password">密码压缩包</a></td></tr>
+            <tr><td>需要密码</td><td>本次手动输入、本批次成功密码和密码文件候选都失败，或当前没有可用密码。</td><td>在提示区输入正确密码；不确定时跳过。</td><td><a href="#workflow-password">密码压缩包</a></td></tr>
             <tr><td>任务显示“部分恢复”</td><td>7-Zip 返回警告、CRC32 不一致，或输出移动和校验没有完全成功，但仍有文件可以保留。</td><td>检查 <code>非完全恢复</code> 目录；这类任务不会清理源文件。</td><td><a href="#recovery">恢复</a></td></tr>
             <tr><td>扫描文件夹没发现 JPEG/MP4/MKV 中的内嵌 ZIP</td><td>结构信息不足、边界无法确认，或内容不是当前支持的 ZIP 候选。</td><td>用“添加文件”直接加入；程序会在 7-Zip 打开失败后自动检查内部结构。必要时再人工提取。</td><td><a href="#workflow-stego">伪装文件与内嵌 ZIP</a></td></tr>
             <tr><td>从右键菜单发送目录后没有立即显示</td><td>另一次目录扫描尚未完成，后续请求正在“待接纳”列表中按顺序等待。</td><td>等待当前扫描完成；程序会自动启动后续扫描，不需要手动恢复。</td><td><a href="#ipc-results">单实例与待接纳</a></td></tr>
@@ -1178,8 +1181,8 @@ python smart7z.py -- --queue</code></pre>
             <tr><td><code>nested_extraction</code></td><td><code>false</code></td><td>是否自动处理解压结果中的内层压缩包。</td></tr>
             <tr><td><code>max_nested_depth</code></td><td><code>2</code></td><td>嵌套最大深度。</td></tr>
             <tr><td><code>space_wait_timeout</code></td><td><code>7200</code></td><td>空间等待超时秒数，默认 2 小时；已有配置中的自定义值继续保留。</td></tr>
-            <tr><td><code>max_manifest_entries</code></td><td><code>200000</code></td><td>清单最大条目数。</td></tr>
-            <tr><td><code>max_output_files</code></td><td><code>200000</code></td><td>输出文件数上限。</td></tr>
+            <tr><td><code>max_manifest_entries</code></td><td><code>200000</code></td><td>清单最大条目数；流式解析器的内部安全上限同为 200000，配置为更高数值也不会绕过。</td></tr>
+            <tr><td><code>max_output_files</code></td><td><code>200000</code></td><td>输出文件数上限；实际列表止损点还会受上述内部安全上限约束。</td></tr>
             <tr><td><code>max_output_bytes</code></td><td><code>0</code></td><td>0 表示根据清单和空闲空间自动批准，不代表无限制。</td></tr>
             <tr><td><code>max_nested_children</code></td><td><code>50</code></td><td>每个根批次最多内层任务数。</td></tr>
             <tr><td><code>max_nested_output_bytes</code></td><td><code>0</code></td><td>嵌套扫描和输出的总字节上限；0 表示不单独设置嵌套总上限。</td></tr>
