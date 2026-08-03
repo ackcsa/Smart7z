@@ -58,6 +58,7 @@ class RecycleBinAssessment:
 SESSION_OWNER_FILE = ".smart7z-owner.json"
 SESSION_OWNER_SCHEMA = 1
 _SESSION_NAME_RE = re.compile(r"Smart7z_Session_(\d+)_([0-9a-f]{32})")
+_EMPTY_SESSION_SCAFFOLD_DIRS = frozenset({"stego"})
 
 _CONTEXT_MENU_ENTRIES = (
     ("Smart7zExtractHere", "智能解压到此文件夹", "keep"),
@@ -732,6 +733,20 @@ def cleanup_owned_session(
     if owner != (expected, expected_token):
         return False
     try:
+        for name in set(os.listdir(session_path)) - {SESSION_OWNER_FILE}:
+            if name not in _EMPTY_SESSION_SCAFFOLD_DIRS:
+                return False
+            scaffold = os.path.join(session_path, name)
+            if (
+                not os.path.isdir(scaffold)
+                or os.path.islink(scaffold)
+                or is_reparse_point(scaffold)
+            ):
+                return False
+            try:
+                os.rmdir(scaffold)
+            except OSError:
+                return False
         if set(os.listdir(session_path)) != {SESSION_OWNER_FILE}:
             return False
     except OSError:

@@ -158,6 +158,9 @@ INSTANCE_STARTUP_POLL_SECONDS = 0.1
 PENDING_INTAKE_LIMIT = 4096
 CONTEXT_AUTO_CLOSE_GRACE_MS = 1500
 SCAN_PROGRESS_MIN_INTERVAL_SECONDS = 0.08
+SCAN_MODE_DEEP = "deep"
+SCAN_MODE_STEGANOGRAPHIER = "steganographier"
+SCAN_MODE_NORMAL = "normal"
 
 EXTERNAL_CLEANUP_POLICIES = frozenset({
     CleanupPolicy.KEEP.value,
@@ -938,12 +941,30 @@ class Smart7zAppModern:
         self.var_wait_space = tk.BooleanVar(value=self.config.get("wait_disk_space", True))
         self.var_staging_mode = tk.BooleanVar(value=(self.config.get("extract_mode", "staging") == "staging"))
         deep_scan = bool(self.config.get("deep_scan", False))
+        steganographier_compat = bool(
+            self.config.get("steganographier_compat_mode", True)
+        ) and not deep_scan
+        scan_mode = (
+            SCAN_MODE_DEEP
+            if deep_scan
+            else (
+                SCAN_MODE_STEGANOGRAPHIER
+                if steganographier_compat
+                else SCAN_MODE_NORMAL
+            )
+        )
         self.var_deep_scan = tk.BooleanVar(value=deep_scan)
         self.var_steganographier_compat = tk.BooleanVar(
-            value=(
-                self.config.get("steganographier_compat_mode", True)
-                and not deep_scan
-            )
+            value=steganographier_compat
+        )
+        self.var_scan_deep_mode = tk.BooleanVar(
+            value=scan_mode == SCAN_MODE_DEEP
+        )
+        self.var_scan_steganographier_mode = tk.BooleanVar(
+            value=scan_mode == SCAN_MODE_STEGANOGRAPHIER
+        )
+        self.var_scan_normal_mode = tk.BooleanVar(
+            value=scan_mode == SCAN_MODE_NORMAL
         )
         self.var_nested = tk.BooleanVar(value=self.config.get("nested_extraction", False))
         self.var_cleanup_policy = tk.StringVar(value=self.config.get("cleanup_policy", "keep"))
@@ -1019,13 +1040,7 @@ class Smart7zAppModern:
         self.extract_option_controls = []
         for label, variable, command in (
             ("解压到原目录", self.var_extract_to_source, None),
-            ("空间等待", self.var_wait_space, None),
             ("暂存模式", self.var_staging_mode, None),
-            (
-                "深度扫描模式（全文件读取）",
-                self.var_deep_scan,
-                self._on_deep_scan_change,
-            ),
             ("嵌套解压", self.var_nested, None),
         ):
             control = tk.Checkbutton(
@@ -1287,20 +1302,89 @@ class Smart7zAppModern:
         self.menubar.add_cascade(
             label="右键菜单", menu=self.context_menu_menu
         )
-        self.menubar.add_checkbutton(
-            label="仅兼容隐写者模式（非全读取）",
-            variable=self.var_steganographier_compat,
-            command=self._on_steganographier_compat_change,
+
+        self.file_scan_mode_menu = tk.Menu(self.menubar, tearoff=0)
+        for label, mode, variable in (
+            (
+                "深度扫描模式（全文件读取）",
+                SCAN_MODE_DEEP,
+                self.var_scan_deep_mode,
+            ),
+            (
+                "仅兼容隐写者模式（非全读取）",
+                SCAN_MODE_STEGANOGRAPHIER,
+                self.var_scan_steganographier_mode,
+            ),
+            (
+                "普通模式",
+                SCAN_MODE_NORMAL,
+                self.var_scan_normal_mode,
+            ),
+        ):
+            self.file_scan_mode_menu.add_checkbutton(
+                label=label,
+                variable=variable,
+                command=lambda selected=mode: self._select_scan_mode(selected),
+            )
+        self.menubar.add_cascade(
+            label="文件扫描模式",
+            menu=self.file_scan_mode_menu,
+        )
+
+        self.options_menu = tk.Menu(self.menubar, tearoff=0)
+        self.options_menu.add_checkbutton(
+            label="空间不足时等待",
+            variable=self.var_wait_space,
+        )
+        self.menubar.add_cascade(
+            label="选项",
+            menu=self.options_menu,
         )
         self.root.config(menu=self.menubar)
 
+    @staticmethod
+    def _scan_mode_from_config(config):
+        if bool(config.get("deep_scan", False)):
+            return SCAN_MODE_DEEP
+        if bool(config.get("steganographier_compat_mode", True)):
+            return SCAN_MODE_STEGANOGRAPHIER
+        return SCAN_MODE_NORMAL
+
+    def _selected_scan_mode(self):
+        if self.var_scan_deep_mode.get():
+            return SCAN_MODE_DEEP
+        if self.var_scan_steganographier_mode.get():
+            return SCAN_MODE_STEGANOGRAPHIER
+        return SCAN_MODE_NORMAL
+
+    def _select_scan_mode(self, mode):
+        if mode not in {
+            SCAN_MODE_DEEP,
+            SCAN_MODE_STEGANOGRAPHIER,
+            SCAN_MODE_NORMAL,
+        }:
+            mode = SCAN_MODE_NORMAL
+        self.var_scan_deep_mode.set(mode == SCAN_MODE_DEEP)
+        self.var_scan_steganographier_mode.set(
+            mode == SCAN_MODE_STEGANOGRAPHIER
+        )
+        self.var_scan_normal_mode.set(mode == SCAN_MODE_NORMAL)
+        self.var_deep_scan.set(mode == SCAN_MODE_DEEP)
+        self.var_steganographier_compat.set(
+            mode == SCAN_MODE_STEGANOGRAPHIER
+        )
+
     def _on_steganographier_compat_change(self):
         if self.var_steganographier_compat.get():
-            self.var_deep_scan.set(False)
+            self._select_scan_mode(SCAN_MODE_STEGANOGRAPHIER)
+        else:
+            self._select_scan_mode(SCAN_MODE_NORMAL)
 
     def _on_deep_scan_change(self):
         if self.var_deep_scan.get():
-            self.var_steganographier_compat.set(False)
+            self._select_scan_mode(SCAN_MODE_DEEP)
+        else:
+            self._select_scan_mode(SCAN_MODE_NORMAL)
 
     def _setup_dnd(self):
         if not DND_AVAILABLE:
@@ -1812,9 +1896,10 @@ class Smart7zAppModern:
     ):
         if config_snapshot is None:
             config_snapshot = dict(self.config)
-            config_snapshot["deep_scan"] = bool(self.var_deep_scan.get())
-            config_snapshot["steganographier_compat_mode"] = bool(
-                self.var_steganographier_compat.get()
+            scan_mode = self._selected_scan_mode()
+            config_snapshot["deep_scan"] = scan_mode == SCAN_MODE_DEEP
+            config_snapshot["steganographier_compat_mode"] = (
+                scan_mode == SCAN_MODE_STEGANOGRAPHIER
             )
             config_snapshot["cleanup_policy"] = self.var_cleanup_policy.get()
         else:
@@ -2222,10 +2307,10 @@ class Smart7zAppModern:
         candidate["extract_to_source"] = self.var_extract_to_source.get()
         candidate["wait_disk_space"] = self.var_wait_space.get()
         candidate["extract_mode"] = "staging" if self.var_staging_mode.get() else "direct"
-        candidate["deep_scan"] = self.var_deep_scan.get()
+        scan_mode = self._selected_scan_mode()
+        candidate["deep_scan"] = scan_mode == SCAN_MODE_DEEP
         candidate["steganographier_compat_mode"] = (
-            self.var_steganographier_compat.get()
-            and not self.var_deep_scan.get()
+            scan_mode == SCAN_MODE_STEGANOGRAPHIER
         )
         candidate["nested_extraction"] = self.var_nested.get()
         try:
@@ -2273,11 +2358,7 @@ class Smart7zAppModern:
         self.var_staging_mode.set(
             self.config.get("extract_mode", "staging") == "staging"
         )
-        self.var_deep_scan.set(bool(self.config.get("deep_scan", False)))
-        self.var_steganographier_compat.set(
-            bool(self.config.get("steganographier_compat_mode", True))
-            and not self.var_deep_scan.get()
-        )
+        self._select_scan_mode(self._scan_mode_from_config(self.config))
         self.var_nested.set(bool(self.config.get("nested_extraction", False)))
         self.var_cleanup_policy.set(self.config.get("cleanup_policy", "keep"))
         for entry, value in (

@@ -384,13 +384,30 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 self.assertNotIn("保存配置", labels)
                 self.assertEqual(
                     [item.get("label") for item in app.menubar.menu_cascades],
-                    ["右键菜单"],
+                    ["右键菜单", "文件扫描模式", "选项"],
                 )
                 self.assertEqual(
-                    [item.get("label") for item in app.menubar.menu_commands],
-                    ["仅兼容隐写者模式（非全读取）"],
+                    [
+                        item.get("label")
+                        for item in app.file_scan_mode_menu.menu_commands
+                    ],
+                    [
+                        "深度扫描模式（全文件读取）",
+                        "仅兼容隐写者模式（非全读取）",
+                        "普通模式",
+                    ],
+                )
+                self.assertEqual(
+                    [
+                        item.get("label")
+                        for item in app.options_menu.menu_commands
+                    ],
+                    ["空间不足时等待"],
                 )
                 self.assertTrue(app.var_steganographier_compat.get())
+                self.assertTrue(app.var_scan_steganographier_mode.get())
+                self.assertFalse(app.var_scan_deep_mode.get())
+                self.assertFalse(app.var_scan_normal_mode.get())
                 self.assertFalse(hasattr(app, "context_menu_controls"))
                 self.assertFalse(hasattr(app, "btn_add_context_menu"))
                 self.assertFalse(hasattr(app, "btn_remove_context_menu"))
@@ -403,13 +420,18 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 self.assertTrue(app.var_steganographier_compat.get())
                 self.assertFalse(app.var_deep_scan.get())
 
-                app.var_deep_scan.set(True)
-                app._on_deep_scan_change()
+                app._select_scan_mode(ui_app.SCAN_MODE_DEEP)
                 self.assertFalse(app.var_steganographier_compat.get())
+                self.assertTrue(app.var_scan_deep_mode.get())
 
-                app.var_steganographier_compat.set(True)
-                app._on_steganographier_compat_change()
+                app._select_scan_mode(ui_app.SCAN_MODE_STEGANOGRAPHIER)
                 self.assertFalse(app.var_deep_scan.get())
+                self.assertTrue(app.var_scan_steganographier_mode.get())
+
+                app._select_scan_mode(ui_app.SCAN_MODE_NORMAL)
+                self.assertFalse(app.var_deep_scan.get())
+                self.assertFalse(app.var_steganographier_compat.get())
+                self.assertTrue(app.var_scan_normal_mode.get())
                 app._on_closing()
 
     def test_close_saves_current_controls_before_shutdown(self):
@@ -417,7 +439,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
             root = _FakeRoot()
             with _patched_ui(_test_config(temp)):
                 app = ui_app.Smart7zAppModern(root)
-                app.var_deep_scan.set(True)
+                app._select_scan_mode(ui_app.SCAN_MODE_DEEP)
                 app.entry_target.delete(0, ui_app.tk.END)
                 app.entry_target.insert(0, str(Path(temp) / "new-target"))
 
@@ -486,9 +508,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                     [control["text"] for control in app.extract_option_controls],
                     [
                         "解压到原目录",
-                        "空间等待",
                         "暂存模式",
-                        "深度扫描模式（全文件读取）",
                         "嵌套解压",
                     ],
                 )
@@ -888,9 +908,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                     [control["text"] for control in app.extract_option_controls],
                     [
                         "解压到原目录",
-                        "空间等待",
                         "暂存模式",
-                        "深度扫描模式（全文件读取）",
                         "嵌套解压",
                     ],
                 )
@@ -910,7 +928,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                     )
                 )
 
-                app.var_deep_scan.set(True)
+                app._select_scan_mode(ui_app.SCAN_MODE_DEEP)
                 app.var_cleanup_policy.set("recycle")
                 self.assertTrue(app.var_deep_scan.get())
                 self.assertEqual(app.var_cleanup_policy.get(), "recycle")
@@ -1828,7 +1846,7 @@ class TestHeadlessUiLifecycle(unittest.TestCase):
                 app.var_extract_to_source.set(False)
                 app.var_wait_space.set(False)
                 app.var_staging_mode.set(False)
-                app.var_deep_scan.set(True)
+                app._select_scan_mode(ui_app.SCAN_MODE_DEEP)
                 app.var_nested.set(True)
                 app.var_cleanup_policy.set("permanent")
                 for entry, value in (
@@ -2712,6 +2730,32 @@ class TestWindowsAdapterLifecycle(unittest.TestCase):
             ):
                 windows_adapters.cleanup_stale_sessions(temp)
             self.assertFalse(session.exists())
+
+    def test_stale_session_with_empty_stego_scaffold_is_removed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session_path, _token = windows_adapters.create_owned_session(temp)
+            session = Path(session_path)
+            (session / "stego").mkdir()
+            with (
+                mock.patch.object(windows_adapters, "_is_pid_running", return_value=False),
+                mock.patch.object(windows_adapters, "is_reparse_point", return_value=False),
+            ):
+                windows_adapters.cleanup_stale_sessions(temp)
+            self.assertFalse(session.exists())
+
+    def test_stale_session_with_nonempty_stego_scaffold_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            session_path, _token = windows_adapters.create_owned_session(temp)
+            session = Path(session_path)
+            stego = session / "stego"
+            stego.mkdir()
+            (stego / "sentinel.txt").write_text("later", encoding="utf-8")
+            with (
+                mock.patch.object(windows_adapters, "_is_pid_running", return_value=False),
+                mock.patch.object(windows_adapters, "is_reparse_point", return_value=False),
+            ):
+                windows_adapters.cleanup_stale_sessions(temp)
+            self.assertTrue(session.exists())
 
     def test_stale_session_with_unregistered_content_is_preserved(self):
         with tempfile.TemporaryDirectory() as temp:
