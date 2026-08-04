@@ -75,9 +75,11 @@ class TestSecretBoundaries(unittest.TestCase):
             try:
                 job = Job(path="encrypted.zip")
                 job.record_state(JobState.PASSWORD_REQUIRED)
+                job.password_candidates_exhausted = True
                 scheduler.password_pending[job.task_id] = job
                 scheduler.submit_password_response(job, "top-secret")
                 self.assertFalse(hasattr(job, "manual_password"))
+                self.assertTrue(job.password_candidates_exhausted)
                 self.assertNotIn("top-secret", repr(job))
                 password, main = scheduler._password_inputs_for(job)
                 self.assertEqual(password, "top-secret")
@@ -172,6 +174,19 @@ class TestExecutorPasswordsAndMetrics(unittest.TestCase):
                 ),
                 ["manual", "batch-success", "file-first", "file-second"],
             )
+            with mock.patch.object(
+                executor,
+                "_read_password_file",
+                side_effect=AssertionError("manual retry must not reread code.txt"),
+            ):
+                self.assertEqual(
+                    executor._password_candidates(
+                        "manual",
+                        "batch-success",
+                        manual_retry_only=True,
+                    ),
+                    ["manual"],
+                )
 
     def test_precomputed_structural_candidates_are_reused(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -238,13 +238,18 @@ class TestRealSevenZipPipeline(unittest.TestCase):
             )
             executor.cleanup_job_artifacts(job, terminal=True)
 
-    def test_manual_password_retry_reuses_unchanged_encrypted_manifest(self):
+    def test_manual_password_retry_does_not_replay_automatic_candidates(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = os.path.join(temp_dir, "secret.txt")
             archive = os.path.join(temp_dir, "prompt-retry.zip")
             destination = os.path.join(temp_dir, "output")
+            password_file = os.path.join(temp_dir, "retry-code.txt")
             password = "prompt-secret"
             Path(source).write_text("private", encoding="utf-8")
+            Path(password_file).write_text(
+                "book-wrong-one\nbook-wrong-two\n",
+                encoding="utf-8",
+            )
             runner = SevenZipRunner(SEVENZIP_PATH)
             created = runner.raw(
                 ["a", "-tzip", archive, source, f"-p{password}", "-mem=AES256", "-y"],
@@ -261,7 +266,7 @@ class TestRealSevenZipPipeline(unittest.TestCase):
                 "extract_mode": "staging",
                 "wait_disk_space": False,
                 "cleanup_policy": "keep",
-                "password_file": os.path.join(temp_dir, "empty-code.txt"),
+                "password_file": password_file,
             }
             job = Job(path=archive, original_path=archive, explicit_input=True)
             executor = Executor(runner, config)
@@ -270,17 +275,27 @@ class TestRealSevenZipPipeline(unittest.TestCase):
             self.assertEqual(first_state, JobState.PASSWORD_REQUIRED)
             self.assertIsNone(first_promoted)
             self.assertEqual(job.phase_metrics.listing_attempts, 1)
-            self.assertEqual(job.phase_metrics.extraction_attempts, 0)
+            self.assertEqual(job.phase_metrics.extraction_attempts, 2)
 
             second_state, second_promoted = executor.execute(
+                job,
+                manual_password="manual-wrong",
+            )
+
+            self.assertEqual(second_state, JobState.PASSWORD_REQUIRED)
+            self.assertIsNone(second_promoted)
+            self.assertEqual(job.phase_metrics.listing_attempts, 1)
+            self.assertEqual(job.phase_metrics.extraction_attempts, 3)
+
+            third_state, third_promoted = executor.execute(
                 job,
                 manual_password=password,
             )
 
-            self.assertEqual(second_state, JobState.COMPLETE, job.error_message)
-            self.assertEqual(second_promoted, password)
+            self.assertEqual(third_state, JobState.COMPLETE, job.error_message)
+            self.assertEqual(third_promoted, password)
             self.assertEqual(job.phase_metrics.listing_attempts, 1)
-            self.assertEqual(job.phase_metrics.extraction_attempts, 1)
+            self.assertEqual(job.phase_metrics.extraction_attempts, 4)
             executor.cleanup_job_artifacts(job, terminal=True)
 
     def test_password_retry_relists_when_archive_changed(self):

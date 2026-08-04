@@ -296,7 +296,6 @@ class Scheduler:
             target = pending
             with self._password_lock:
                 self._manual_passwords[target.task_id] = password
-            target.password_candidates_exhausted = False
             target.record_state(JobState.QUEUED)
             target.error_message = ""
             self.task_queue.put(target)

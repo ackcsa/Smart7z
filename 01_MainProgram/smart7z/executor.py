@@ -339,6 +339,11 @@ class Executor:
         manual_password: Optional[str],
         session_main_password: Optional[str],
     ) -> Tuple[JobState, Optional[str]]:
+        # Automatic candidates have already been exhausted before a prompt.
+        # Treat each response as one explicit attempt instead of replaying them.
+        manual_retry_only = bool(
+            job.password_candidates_exhausted and manual_password is not None
+        )
         if not job.cleanup_policy_snapshot:
             job.cleanup_policy_snapshot = cleanup_policy_from_config(
                 self.config
@@ -418,6 +423,7 @@ class Executor:
                 target,
                 manual_password=manual_password,
                 session_main_password=session_main_password,
+                manual_retry_only=manual_retry_only,
             )
 
         if (
@@ -454,6 +460,7 @@ class Executor:
                     job.temp_zip,
                     manual_password=manual_password,
                     session_main_password=session_main_password,
+                    manual_retry_only=manual_retry_only,
                 )
                 if manifest is not None:
                     job.terminal_diagnostics.extend(
@@ -494,6 +501,7 @@ class Executor:
                         job.temp_zip,
                         manual_password=manual_password,
                         session_main_password=session_main_password,
+                        manual_retry_only=manual_retry_only,
                     )
             if manifest is None and password_failure and not job.temp_zip:
                 job.password_candidates_exhausted = True
@@ -552,6 +560,7 @@ class Executor:
             manual_password,
             session_main_password,
             include_no_password=False,
+            manual_retry_only=manual_retry_only,
         ):
             job.password_candidates_exhausted = True
             self._emit(
@@ -582,6 +591,7 @@ class Executor:
             working_password,
             manual_password=manual_password,
             session_main_password=session_main_password,
+            manual_retry_only=manual_retry_only,
         )
         job.extraction_result = extraction
         working_password = None
@@ -672,13 +682,18 @@ class Executor:
         target: str,
         manual_password: Optional[str],
         session_main_password: Optional[str],
+        manual_retry_only: bool = False,
     ) -> Tuple[
         Optional[ArchiveManifest],
         Optional[str],
         Optional[str],
         Optional[SevenZipError],
     ]:
-        candidates = self._password_candidates(manual_password, session_main_password)
+        candidates = self._password_candidates(
+            manual_password,
+            session_main_password,
+            manual_retry_only=manual_retry_only,
+        )
         last_error: Optional[SevenZipError] = None
         for index, password in enumerate(candidates):
             if self._cancelled():
@@ -727,6 +742,7 @@ class Executor:
         session_main_password: Optional[str],
         *,
         include_no_password: bool = True,
+        manual_retry_only: bool = False,
     ) -> List[Optional[str]]:
         candidates: List[Optional[str]] = []
         seen: Set[str] = set()
@@ -744,6 +760,8 @@ class Executor:
             candidates.append(normalized)
 
         add(manual_password)
+        if manual_retry_only:
+            return candidates
         add(session_main_password)
         if include_no_password:
             add(None)
@@ -784,6 +802,7 @@ class Executor:
         listing_password: Optional[str],
         manual_password: Optional[str],
         session_main_password: Optional[str],
+        manual_retry_only: bool = False,
     ) -> Tuple[ExtractionResult, Optional[str]]:
         manifest = job.manifest
         if manifest is None or not manifest.is_encrypted:
@@ -798,6 +817,7 @@ class Executor:
                 manual_password,
                 session_main_password,
                 include_no_password=False,
+                manual_retry_only=manual_retry_only,
             ),
         ]:
             if candidate is None:
