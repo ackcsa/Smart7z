@@ -2911,7 +2911,11 @@ class Executor:
 
         if job.nested_depth > 0:
             return False
-        return bool(job.explicit_input or self.config.get("deep_scan", False))
+        return bool(
+            job.stego_candidates
+            or job.explicit_input
+            or self.config.get("deep_scan", False)
+        )
 
     def _maybe_nested(self, job: Job) -> None:
         if not self.config.get("nested_extraction", False):

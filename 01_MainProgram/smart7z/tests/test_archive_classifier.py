@@ -545,6 +545,8 @@ class TestAutomaticDiscoveryIntegration(unittest.TestCase):
     def test_nested_jobs_never_use_structural_deep_scan(self):
         deep_executor = Executor(object(), {"deep_scan": True})
         shallow_executor = Executor(object(), {"deep_scan": False})
+        scanned_job = Job(path="compatible.mp4", explicit_input=False)
+        scanned_job.stego_candidates = [mock.sentinel.compatible_candidate]
 
         self.assertTrue(
             deep_executor._may_scan_structure(
@@ -556,6 +558,7 @@ class TestAutomaticDiscoveryIntegration(unittest.TestCase):
                 Job(path="dragged.bin", explicit_input=True)
             )
         )
+        self.assertTrue(shallow_executor._may_scan_structure(scanned_job))
         self.assertFalse(
             deep_executor._may_scan_structure(
                 Job(

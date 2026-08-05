@@ -54,6 +54,15 @@ def _bmff_box(box_type, payload=b""):
     return (8 + len(payload)).to_bytes(4, "big") + box_type + payload
 
 
+def _bmff_large_box(box_type, payload=b""):
+    return (
+        (1).to_bytes(4, "big")
+        + box_type
+        + (16 + len(payload)).to_bytes(8, "big")
+        + payload
+    )
+
+
 def _ebml_id(value):
     return value.to_bytes(max(1, (value.bit_length() + 7) // 8), "big")
 
@@ -154,6 +163,33 @@ class TestSteganographierCompat(unittest.TestCase):
             "steganographier_randomized_suffix", candidate.validation_flags
         )
 
+    def test_all_current_randomized_suffix_signatures_are_compatible(self):
+        zip_data = _zip_bytes()
+        prefix = _bmff_box(b"ftyp", b"isom") + _bmff_box(b"mdat", b"cover")
+        for signature in steganographier_compat.ARCHIVE_DECOY_SIGNATURES:
+            with self.subTest(signature=signature), tempfile.TemporaryDirectory() as temp:
+                suffix = (
+                    signature
+                    + b"A" * (5 * 1024)
+                    + b"PK\x03\x04"
+                    + b"B" * (10 * 1024)
+                    + steganographier_compat.EMPTY_MDAT
+                )
+                path = Path(temp) / "hidden.mp4"
+                path.write_bytes(prefix + zip_data + suffix)
+
+                candidates = steganographier_compat.find_steganographier_candidates(
+                    str(path)
+                )
+
+                self.assertEqual(len(candidates), 1)
+                self.assertEqual(candidates[0].start_offset, len(prefix))
+                self.assertEqual(candidates[0].end_offset, len(prefix) + len(zip_data))
+                self.assertIn(
+                    "steganographier_randomized_suffix",
+                    candidates[0].validation_flags,
+                )
+
     def test_trailing_mp4_accepts_consistent_unsaturated_zip64(self):
         zip_data = _zip64_bytes(_zip_bytes(content=b"zip64-payload"))
         suffix = (
@@ -229,6 +265,24 @@ class TestSteganographierCompat(unittest.TestCase):
         candidate = candidates[0]
         self.assertEqual(candidate.mode, "steganographier_free_atom")
         self.assertEqual(candidate.start_offset, len(ftyp) + 8)
+        self.assertEqual(candidate.end_offset, len(ftyp) + len(free))
+
+    def test_zarchiver_large_size_free_atom_payload_is_exact(self):
+        zip_data = _zip_bytes(content=b"large-size-header")
+        ftyp = _bmff_box(b"ftyp", b"isom")
+        free = _bmff_large_box(b"free", zip_data)
+        content = ftyp + free + _bmff_box(b"mdat", b"video")
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "zarchiver-large-size.mp4"
+            path.write_bytes(content)
+            candidates = steganographier_compat.find_steganographier_candidates(
+                str(path)
+            )
+
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual(candidate.mode, "steganographier_free_atom")
+        self.assertEqual(candidate.start_offset, len(ftyp) + 16)
         self.assertEqual(candidate.end_offset, len(ftyp) + len(free))
 
     def test_matroska_seek_head_skips_large_cluster(self):

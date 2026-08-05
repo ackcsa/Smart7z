@@ -2,6 +2,7 @@
 
 import json
 import os
+import struct
 import tempfile
 import threading
 import time
@@ -16,6 +17,7 @@ from models import Job, JobState
 from nested import NestedExtractor
 from sevenzip import SevenZipRunner
 from stego_candidates import find_candidates
+from steganographier_compat import EMPTY_MDAT, find_steganographier_candidates
 
 
 SEVENZIP_PATH = find_sevenzip(DEFAULT_CONFIG)
@@ -27,6 +29,37 @@ class TestRealSevenZipPipeline(unittest.TestCase):
         with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for name, content in files.items():
                 archive.writestr(name, content)
+
+    @staticmethod
+    def _add_unsaturated_zip64(zip_data):
+        eocd_offset = zip_data.rfind(b"PK\x05\x06")
+        if eocd_offset < 0 or eocd_offset + 22 != len(zip_data):
+            raise ValueError("test ZIP must end with an uncommented EOCD")
+        eocd = zip_data[eocd_offset:]
+        disk, cd_disk, entries_disk, entries, cd_size, cd_offset = (
+            struct.unpack_from("<HHHHII", eocd, 4)
+        )
+        record = struct.pack(
+            "<4sQHHIIQQQQ",
+            b"PK\x06\x06",
+            44,
+            45,
+            45,
+            disk,
+            cd_disk,
+            entries_disk,
+            entries,
+            cd_size,
+            cd_offset,
+        )
+        locator = struct.pack(
+            "<4sIQI",
+            b"PK\x06\x07",
+            0,
+            eocd_offset,
+            1,
+        )
+        return zip_data[:eocd_offset] + record + locator + eocd
 
     def _execute(self, archive, destination, mode, **config_overrides):
         config = dict(DEFAULT_CONFIG)
@@ -440,6 +473,73 @@ class TestRealSevenZipPipeline(unittest.TestCase):
                 and candidate.end_offset == len(prefix) + len(archive_bytes)
             ]
             self.assertTrue(exact, candidates)
+
+    def test_steganographier_zip64_runs_in_compat_and_deep_scan_modes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive = Path(temp_dir, "payload.zip")
+            self._make_zip(archive, {"inside.txt": "zip64-compatible"})
+            zip64_data = self._add_unsaturated_zip64(archive.read_bytes())
+            prefix = (
+                (16).to_bytes(4, "big")
+                + b"ftyp"
+                + b"isom\x00\x00\x00\x00"
+                + (13).to_bytes(4, "big")
+                + b"mdat"
+                + b"cover"
+            )
+            suffix = (
+                b"Rar!\x1a\x07\x01\x00"
+                + b"A" * (5 * 1024)
+                + b"7z\xbc\xaf\x27\x1c"
+                + b"B" * (10 * 1024)
+                + EMPTY_MDAT
+            )
+            host = Path(temp_dir, "hidden-zip64.mp4")
+            host.write_bytes(prefix + zip64_data + suffix)
+            candidates = find_steganographier_candidates(str(host))
+            self.assertEqual(len(candidates), 1)
+            self.assertIn("zip64_geometry_valid", candidates[0].validation_flags)
+
+            for scan_mode in ("compat", "deep"):
+                with self.subTest(scan_mode=scan_mode):
+                    destination = Path(temp_dir, f"output-{scan_mode}")
+                    config = {
+                        **DEFAULT_CONFIG,
+                        "7z_path": SEVENZIP_PATH,
+                        "extract_to_source": False,
+                        "target_dir": str(destination),
+                        "temp_dir": str(Path(temp_dir, f"staging-{scan_mode}")),
+                        "extract_mode": "staging",
+                        "wait_disk_space": False,
+                        "cleanup_policy": "keep",
+                        "deep_scan": scan_mode == "deep",
+                        "steganographier_compat_mode": scan_mode == "compat",
+                        "nested_extraction": False,
+                    }
+                    job = Job(
+                        path=str(host),
+                        original_path=str(host),
+                        original_basename=host.name,
+                        explicit_input=False,
+                        stego_candidates=(
+                            list(candidates) if scan_mode == "compat" else []
+                        ),
+                    )
+                    executor = Executor(SevenZipRunner(SEVENZIP_PATH), config)
+
+                    state, promoted = executor.execute(job)
+
+                    self.assertEqual(state, JobState.COMPLETE, job.error_message)
+                    self.assertIsNone(promoted)
+                    self.assertEqual(
+                        Path(job.final_destination).read_text(encoding="utf-8"),
+                        "zip64-compatible",
+                    )
+                    self.assertEqual(
+                        job.selected_candidate.mode,
+                        "steganographier_mp4_trailing",
+                    )
+                    executor.cleanup_job_artifacts(job, terminal=True)
 
     def test_warning_host_is_replaced_by_one_exact_zip_candidate(self):
         with tempfile.TemporaryDirectory() as temp_dir:
