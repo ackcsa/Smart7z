@@ -1,9 +1,4 @@
-"""Smart7z entry point — modern serialized runtime bootstrap only.
-
-Legacy ExtractionWorker / Smart7zApp paths are no longer launched.
-Core logic lives in models, config, sevenzip, discovery, executor,
-scheduler, stego_candidates, nested, path_safety, windows_adapters, ui_app.
-"""
+"""Smart7z PySide6 desktop entry point."""
 
 from __future__ import annotations
 
@@ -15,22 +10,22 @@ def main(argv=None) -> int:
     if argv is None:
         argv = sys.argv[1:]
     try:
-        from ui_app import run_app
+        from ui_qt import run_app
 
-        run_app(argv)
-        return 0
+        return int(run_app(argv) or 0)
     except SystemExit as e:
         return int(e.code) if e.code is not None else 0
     except Exception:
         error_msg = traceback.format_exc()
         try:
-            import tkinter
-            from tkinter import messagebox
+            import ctypes
 
-            root = tkinter.Tk()
-            root.withdraw()
-            messagebox.showerror("致命错误", f"程序发生崩溃:\n\n{error_msg}")
-            root.destroy()
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                f"程序发生崩溃:\n\n{error_msg}",
+                "致命错误",
+                0x10,
+            )
         except Exception:
             print(error_msg)
             try:

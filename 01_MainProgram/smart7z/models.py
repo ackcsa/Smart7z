@@ -235,7 +235,7 @@ class Job:
     manifest: Optional[ArchiveManifest] = None
     stego_candidates: List[ArchiveCandidate] = field(default_factory=list)
     selected_candidate: Optional[ArchiveCandidate] = None
-    # A reviewed candidate is carved by the serial worker, never by the Tk
+    # A reviewed candidate is carved by the serial worker, never by the UI
     # callback that records the user's selection.
     stego_selection_pending: bool = False
     extraction_result: Optional[ExtractionResult] = None

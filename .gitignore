@@ -5,6 +5,7 @@
 # Local build toolchains and environments
 /01_MainProgram/smart7z/.build-tools/
 /01_MainProgram/smart7z/.build-venv/
+/01_MainProgram/smart7z/.license-cache/
 /01_MainProgram/smart7z/build/
 /01_MainProgram/smart7z/release/
 

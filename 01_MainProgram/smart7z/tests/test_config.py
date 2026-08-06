@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config as config_mod
 import recovery
-import ui_app
+from runtime_ipc import _ipc_state_path
 from config import (
     DEFAULT_CONFIG, load_config, save_config,
     find_sevenzip, get_password_file_path,
@@ -133,7 +133,7 @@ class TestFrozenStateLayout(unittest.TestCase):
                     str(installed_root / "recovery-v1.json"),
                 )
                 self.assertEqual(
-                    ui_app._ipc_state_path(), str(installed_root / "ipc-v3.json")
+                    _ipc_state_path(), str(installed_root / "ipc-v3.json")
                 )
 
                 (app_dir / config_mod.PORTABLE_MARKER_NAME).touch()

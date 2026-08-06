@@ -8,25 +8,28 @@ Smart 7z Ultra 1.0.0 源码版
 源码包包含一方 Python 源码、测试、构建脚本、资源模板和用户手册；
 不包含构建产物、虚拟环境、离线工具链、缓存或运行时恢复记录。
 
-本次更新新增默认开启的 SteganographierGUI 非全读取兼容探测，支持
-普通 MP4 追加 ZIP、ZArchiver free 原子和 MKV ZIP 附件；同时包括
-非饱和经典字段 ZIP64 严格几何校验，以及深度扫描、直接添加和拖入对随机
-RAR/7z/ZIP 诱饵的优先识别；修复兼容模式预计算候选未进入执行器切割流程
-而误报 NOT_ARCHIVE 的问题；同时包括三级互斥文件扫描菜单、深度扫描通用
-回退的单轮流式预检与候选复用、非常驻扫描进度、
-任务详情高度调整和小包优先调度、密码提示布局恢复、旧密码本继承、
-自动候选耗尽后手动密码只尝试本次输入、不重复读取会话密码和密码本、
-普通 EXE 目录保护及高置信度 ZIP/7z SFX 例外，以及此前的关闭阶段
-单实例接管、完整加密清单复用、有界流式 SLT 解析、安全上限和空 stego
-会话目录安全回收。
+本次更新以 PySide6 的 ui_qt.py 为图形界面真源。顶部提供“右键菜单”、
+“文件扫描模式”和“选项”；三种扫描模式互斥选择。“嵌套解压”开关位于
+主界面，最大嵌套深度和“空间不足时等待”位于“选项”对话框。扫描进度、
+手动密码和隐写候选共用非常驻活动栏；任务队列与“任务详情 / 运行日志”
+之间使用可拖动分隔条。Windows 单实例启动会先转交请求；现有实例关闭中时，
+新进程有界等待转交或取得互斥量后接管，不创建并行任务窗口。
+
+发行源码包同时包含 licenses/ 下的 Qt/PySide6/Shiboken6 许可证正文、版本与
+归档校验清单，以及 corresponding-source/ 下的对应 Qt 与 PySide6 官方源码树。
+
+处理能力包括 SteganographierGUI 非全读取兼容探测、普通 MP4 追加 ZIP、
+ZArchiver free 原子、MKV ZIP 附件、ZIP64 严格几何校验、深度扫描候选复用、
+小包优先调度、密码重试优化、普通 EXE 目录保护、完整加密清单复用、
+有界流式 SLT 解析、安全上限和空 stego 会话目录安全回收。
 
 运行与验证
 ----------
-- 建议使用 64 位 Python 3.12（含 Tkinter）。
+- 建议使用 64 位 Python 3.12，并安装 PySide6。
 - 安装 7-Zip，或将 7z.exe 放在解压后的源码根目录。
 - 启动：python smart7z.py
 - 全量测试：python -m unittest discover -s tests -v
-- 最终源码验证结果：372/372 通过，真实 7-Zip 集成用例全部通过。
+- Qt 启动与界面行为测试位于 tests/test_ui_qt.py、tests/test_ui_qt_behaviors.py 和 tests/test_runtime_cleanup_qt.py。
 - 构建：powershell -ExecutionPolicy Bypass -File .\build_release.ps1
 
 完整说明见源码包中的 README.txt 和 Smart7z-User-Manual.html。

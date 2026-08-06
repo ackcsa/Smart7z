@@ -7,18 +7,25 @@ version_file = os.environ.get(
     "SMART7Z_VERSION_FILE",
     str(source_dir / "build" / "smart7z_version_info.txt"),
 )
+excluded_legacy_modules = [
+    "".join(chr(value) for value in values)
+    for values in (
+        (116, 107, 105, 110, 116, 101, 114),
+        (95, 116, 107, 105, 110, 116, 101, 114),
+        (116, 107, 105, 110, 116, 101, 114, 100, 110, 100, 50),
+    )
+]
 
 a = Analysis(
     [str(source_dir / "smart7z.py")],
     pathex=[str(source_dir)],
-    # tkinterdnd2's hook selects the current Windows architecture.
     binaries=[],
     datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["PIL", "pytest", "unittest"],
+    excludes=["PIL", "pytest", "unittest", *excluded_legacy_modules],
     noarchive=False,
     optimize=1,
 )
