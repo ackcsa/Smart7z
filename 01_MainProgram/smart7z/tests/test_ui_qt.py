@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import threading
 import unittest
@@ -13,12 +14,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PySide6.QtWidgets import QApplication
+    from PySide6.QtTest import QTest
 
     import ui_qt
     from config import DEFAULT_CONFIG
     from models import Job, JobState
 except ModuleNotFoundError:
     QApplication = None
+    QTest = None
     ui_qt = None
 
 
@@ -229,6 +232,7 @@ class TestQtRunAppLifecycle(unittest.TestCase):
         ipc.start.assert_called_once_with()
         window.show.assert_called_once_with()
         window.activate_window.assert_called_once_with()
+        window._start_startup_processing.assert_called_once_with()
         window._shutdown.assert_called_once_with(force=True)
         close_mutex.assert_called_once_with(instance_mutex)
 
@@ -297,9 +301,55 @@ class TestQtRunAppLifecycle(unittest.TestCase):
         self.assertEqual(forward.call_count, 2)
         ipc.start.assert_called_once_with()
         self.assertEqual(window._shutdown.call_count, 2)
+        window._start_startup_processing.assert_not_called()
         critical.assert_not_called()
         app.exec.assert_not_called()
         close_mutex.assert_called_once_with(instance_mutex)
+
+    def test_ipc_bind_failure_shuts_down_before_forward_error_dialog(self):
+        app = mock.Mock()
+        request = _launch_request()
+        unavailable = _forward_result("unavailable", "state_unavailable")
+        rejected = _forward_result(
+            "rejected",
+            "bind_conflict",
+            reached_existing=True,
+        )
+        window = _run_app_window()
+        ipc = mock.Mock()
+        ipc.start.return_value = False
+        observed = []
+
+        def forward_exit_code(result, _parent, **_kwargs):
+            if result.reason == "bind_conflict":
+                self.assertEqual(window._shutdown.call_count, 1)
+                observed.append("forward_error")
+                return 1
+            return None
+
+        with (
+            self._qapplication_patch(app),
+            mock.patch.object(ui_qt.sys, "platform", "win32"),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(
+                ui_qt,
+                "_forward_launch_request",
+                side_effect=[unavailable, rejected],
+            ),
+            mock.patch.object(ui_qt, "_qt_forward_exit_code", side_effect=forward_exit_code),
+            mock.patch.object(ui_qt, "create_mutex", return_value=object()),
+            mock.patch.object(ui_qt, "close_mutex", return_value=True) as close_mutex,
+            mock.patch.object(ui_qt, "Smart7zQtWindow", return_value=window),
+            mock.patch.object(ui_qt, "BoundedIPCServer", return_value=ipc),
+        ):
+            exit_code = ui_qt.run_app([])
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(observed, ["forward_error"])
+        window._start_startup_processing.assert_not_called()
+        self.assertEqual(window._shutdown.call_count, 2)
+        close_mutex.assert_called_once()
 
     def test_mutex_is_released_when_startup_or_shutdown_stages_raise(self):
         unavailable = _forward_result("unavailable", "state_unavailable")
@@ -376,6 +426,54 @@ class TestQtUiLifecycle(unittest.TestCase):
                 window.close()
                 window.deleteLater()
                 self.qt_app.processEvents()
+
+    def test_bind_failure_event_pump_cannot_process_startup_args(self):
+        request = _launch_request()
+        unavailable = _forward_result("unavailable", "state_unavailable")
+        rejected = _forward_result(
+            "rejected",
+            "bind_conflict",
+            reached_existing=True,
+        )
+        config = dict(DEFAULT_CONFIG)
+        config["temp_dir"] = tempfile.gettempdir()
+        ipc = mock.Mock()
+        ipc.start.return_value = False
+
+        def forward_exit_code(result, _parent, **_kwargs):
+            if result.reason == "bind_conflict":
+                QTest.qWait(150)
+                return 1
+            return None
+
+        with (
+            mock.patch.object(ui_qt.sys, "platform", "win32"),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(
+                ui_qt,
+                "_forward_launch_request",
+                side_effect=[unavailable, rejected],
+            ),
+            mock.patch.object(ui_qt, "_qt_forward_exit_code", side_effect=forward_exit_code),
+            mock.patch.object(ui_qt, "create_mutex", return_value=object()),
+            mock.patch.object(ui_qt, "close_mutex", return_value=True),
+            mock.patch.object(ui_qt, "load_config", return_value=config),
+            mock.patch.object(ui_qt, "find_sevenzip", return_value=r"C:\7z.exe"),
+            mock.patch.object(ui_qt, "Scheduler", _FakeScheduler),
+            mock.patch.object(ui_qt, "cleanup_stale_sessions", return_value=[]),
+            mock.patch.object(ui_qt, "BoundedIPCServer", return_value=ipc),
+            mock.patch.object(
+                ui_qt.Smart7zQtWindow,
+                "_process_external_paths",
+                autospec=True,
+                return_value=True,
+            ) as process_paths,
+        ):
+            exit_code = ui_qt.run_app([])
+
+        self.assertEqual(exit_code, 1)
+        process_paths.assert_not_called()
 
     def test_compact_inspector_replaces_large_phase_track(self):
         with self.make_window() as window:
@@ -455,9 +553,83 @@ class TestQtUiLifecycle(unittest.TestCase):
                     [button.text() for button in dialog.findChildren(ui_qt.QPushButton, "browseButton")],
                     ["浏览…", "浏览…"],
                 )
+                self.assertEqual(dialog.depth_spin.objectName(), "depthSpin")
+                stylesheet = self.qt_app.styleSheet()
+                self.assertRegex(
+                    stylesheet,
+                    re.compile(
+                        r"(?s)QLineEdit\s*,\s*QComboBox\s*,\s*QSpinBox\s*"
+                        r"\{[^}]*selection-background-color\s*:\s*#d7efeb\s*;"
+                        r"[^}]*selection-color\s*:\s*#1f1f1f\s*;"
+                    ),
+                )
+                self.assertRegex(
+                    stylesheet,
+                    re.compile(
+                        r"(?s)QSpinBox#depthSpin\s*\{[^}]*"
+                        r"padding-right\s*:\s*21px\s*;"
+                    ),
+                )
+                self.assertRegex(
+                    stylesheet,
+                    re.compile(
+                        r"(?s)QSpinBox#depthSpin::up-button\s*,\s*"
+                        r"QSpinBox#depthSpin::down-button\s*\{[^}]*"
+                        r"width\s*:\s*18px\s*;[^}]*"
+                        r"border-left\s*:\s*1px solid #cfd8d5\s*;[^}]*"
+                        r"background\s*:\s*#f5f7f7\s*;"
+                    ),
+                )
+                self.assertRegex(
+                    stylesheet,
+                    re.compile(
+                        r"QSpinBox#depthSpin::up-button\s*\{[^}]*"
+                        r"border-bottom\s*:\s*1px solid #dfe5e3\s*;"
+                    ),
+                )
             finally:
                 dialog.close()
                 dialog.deleteLater()
+
+    def test_startup_args_are_processed_only_after_explicit_activation(self):
+        with self.make_window(startup_args=[r"C:\incoming\sample.zip"]) as window:
+            with mock.patch.object(
+                window, "_process_external_paths", return_value=True
+            ) as process:
+                QTest.qWait(130)
+                process.assert_not_called()
+
+                self.assertTrue(window._start_startup_processing())
+                QTest.qWait(130)
+                process.assert_called_once_with(
+                    [r"C:\incoming\sample.zip"],
+                    auto_start=True,
+                    source="CLI",
+                    cleanup_policy="keep",
+                    extract_to_source=False,
+                    context_menu=False,
+                )
+
+                process.reset_mock()
+                window._startup_args_processed = False
+                window._closing = True
+                window._process_startup_args()
+                process.assert_not_called()
+
+    def test_zero_nested_depth_survives_settings_and_config_sync(self):
+        with self.make_window() as window:
+            window.config["max_nested_depth"] = 0
+            dialog = ui_qt.SettingsDialog(window.config, window)
+            try:
+                self.assertEqual(dialog.depth_spin.value(), 0)
+                self.assertEqual(dialog.values()["max_nested_depth"], 0)
+            finally:
+                dialog.close()
+                dialog.deleteLater()
+
+            with mock.patch.object(ui_qt, "save_config") as save:
+                self.assertTrue(window._sync_config(silent=True))
+                self.assertEqual(save.call_args.args[0]["max_nested_depth"], 0)
 
     def test_settings_path_picker_updates_temp_directory(self):
         with self.make_window() as window:
@@ -479,7 +651,7 @@ class TestQtUiLifecycle(unittest.TestCase):
             buttons = window.queue_panel.findChildren(ui_qt.QPushButton, "queueActionButton")
             self.assertEqual(
                 [button.text() for button in buttons],
-                ["取消当前", "取消选中", "清除已完成", "取消所有待处理", "隐藏详情"],
+                ["终止当前任务", "取消选中", "清除已完成", "取消所有待处理", "隐藏详情"],
             )
             self.assertFalse(window.cancel_current_button.isEnabled())
             self.assertFalse(window.cancel_selected_button.isEnabled())
@@ -506,6 +678,19 @@ class TestQtUiLifecycle(unittest.TestCase):
             self.assertEqual(window.scheduler.cancel_jobs_calls, [{queued.task_id}])
             self.assertEqual(window.scheduler.cancel_current_calls, 0)
             self.assertIn(completed.task_id, window.jobs)
+
+    def test_terminate_current_task_button_cancels_running_job(self):
+        with tempfile.TemporaryDirectory() as temp, self.make_window() as window:
+            current = Job(path=str(Path(temp) / "current.zip"))
+            current.state = JobState.EXTRACTING
+            window.jobs[current.task_id] = current
+            window.job_model.upsert(current)
+            window.scheduler.current_job = current
+            window._update_summary()
+
+            self.assertTrue(window.cancel_current_button.isEnabled())
+            window.cancel_current_button.click()
+            self.assertEqual(window.scheduler.cancel_current_calls, 1)
 
     def test_processing_button_returns_to_start_for_terminal_outcomes(self):
         for state in (JobState.COMPLETE, JobState.FAILED, JobState.INTERRUPTED):

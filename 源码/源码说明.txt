@@ -29,7 +29,7 @@ ZArchiver free 原子、MKV ZIP 附件、ZIP64 严格几何校验、深度扫描
 - 安装 7-Zip，或将 7z.exe 放在解压后的源码根目录。
 - 启动：python smart7z.py
 - 全量测试：python -m unittest discover -s tests -v
-- Qt 启动与界面行为测试位于 tests/test_ui_qt.py、tests/test_ui_qt_behaviors.py 和 tests/test_runtime_cleanup_qt.py。
+- Qt/IPC 启动与界面行为测试位于 tests/test_ui_qt.py、tests/test_ui_qt_behaviors.py、tests/test_ui_qt_ipc_integration.py、tests/test_ui_runtime.py 和 tests/test_runtime_cleanup_qt.py；发行构建边界测试位于 tests/test_release_build.py。
 - 构建：powershell -ExecutionPolicy Bypass -File .\build_release.ps1
 
 完整说明见源码包中的 README.txt 和 Smart7z-User-Manual.html。

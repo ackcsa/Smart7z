@@ -368,6 +368,100 @@ function Assert-ReleaseArchive {
     Write-Host "Audited release archive: $ArchivePath"
 }
 
+function Assert-MinimalQtRuntime {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        throw "Qt runtime root is missing: $Root"
+    }
+
+    $pysideRoots = @(
+        Get-ChildItem -LiteralPath $Root -Directory -Recurse -Force |
+            Where-Object { $_.Name -ceq 'PySide6' }
+    )
+    if ($pysideRoots.Count -ne 1) {
+        throw "Expected exactly one PySide6 runtime directory under $Root; found $($pysideRoots.Count)."
+    }
+
+    $rootPath = [IO.Path]::GetFullPath((Get-Item -LiteralPath $Root).FullName)
+    $rootPrefix = $rootPath
+    if (-not $rootPrefix.EndsWith('\')) {
+        $rootPrefix += '\'
+    }
+    $pysideRoot = [IO.Path]::GetFullPath($pysideRoots[0].FullName)
+    $pysidePrefix = $pysideRoot
+    if (-not $pysidePrefix.EndsWith('\')) {
+        $pysidePrefix += '\'
+    }
+    $allowedBindings = @('QtCore.pyd', 'QtGui.pyd', 'QtWidgets.pyd')
+    $allowedLibraries = @('Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll')
+    $allowedPlugins = @(
+        'plugins/imageformats/qico.dll',
+        'plugins/platforms/qwindows.dll',
+        'plugins/styles/qmodernwindowsstyle.dll'
+    )
+    $forbiddenQtAuxiliaryFiles = @('opengl32sw.dll')
+    $requiredFiles = @($allowedBindings + $allowedLibraries + $allowedPlugins)
+    $violations = @()
+
+    foreach ($relative in $requiredFiles) {
+        $requiredPath = Join-Path $pysideRoot ($relative.Replace('/', '\'))
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            $violations += "missing: $relative"
+        }
+    }
+
+    foreach ($file in (Get-ChildItem -LiteralPath $Root -File -Recurse -Force)) {
+        $filePath = [IO.Path]::GetFullPath($file.FullName)
+        $insidePySide = $filePath.StartsWith(
+            $pysidePrefix,
+            [StringComparison]::OrdinalIgnoreCase
+        )
+        $relative = if ($insidePySide) {
+            $filePath.Substring($pysidePrefix.Length).Replace('\', '/')
+        } else {
+            $filePath.Substring($rootPrefix.Length).Replace('\', '/')
+        }
+
+        if ($file.Name -match '(?i)^Qt.*\.pyd$') {
+            if (-not $insidePySide -or $allowedBindings -notcontains $file.Name) {
+                $violations += $relative
+            }
+            continue
+        }
+        if ($file.Name -match '(?i)^Qt6.*\.dll$') {
+            if (-not $insidePySide -or $allowedLibraries -notcontains $file.Name) {
+                $violations += $relative
+            }
+            continue
+        }
+        if (-not $insidePySide) {
+            continue
+        }
+        if ($forbiddenQtAuxiliaryFiles -contains $file.Name.ToLowerInvariant()) {
+            $violations += $relative
+            continue
+        }
+        if ($relative.StartsWith('qml/', [StringComparison]::OrdinalIgnoreCase)) {
+            $violations += $relative
+            continue
+        }
+        if (
+            $relative.StartsWith('plugins/', [StringComparison]::OrdinalIgnoreCase) -and
+            $allowedPlugins -notcontains $relative
+        ) {
+            $violations += $relative
+        }
+    }
+
+    if ($violations.Count -gt 0) {
+        $details = ($violations | Select-Object -Unique | Sort-Object | ForEach-Object { "  $_" }) -join [Environment]::NewLine
+        throw "PyInstaller output exceeds the licensed minimal Qt runtime:$([Environment]::NewLine)$details"
+    }
+
+    Write-Host "Audited minimal Qt runtime: $Root"
+}
+
 $OriginalLocation = Get-Location
 
 try {
@@ -446,7 +540,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Could not create the build environment.' }
     }
 
-    $dependencyProbe = "from importlib.metadata import version; expected=(('PyInstaller','6.21.0'),('pyinstaller-hooks-contrib','2026.6'),('Pillow','12.3.0'),('PySide6','6.11.1')); raise SystemExit(0 if all(version(name)==wanted for name,wanted in expected) else 1)"
+    $dependencyProbe = "from importlib.metadata import version; expected=(('PyInstaller','6.21.0'),('pyinstaller-hooks-contrib','2026.6'),('Pillow','12.3.0'),('PySide6','6.11.1'),('altgraph','0.17.5'),('packaging','26.3'),('pefile','2024.8.26'),('pywin32-ctypes','0.2.3'),('setuptools','83.0.0')); raise SystemExit(0 if all(version(name)==wanted for name,wanted in expected) else 1)"
     & $VenvPython -c $dependencyProbe
     if ($LASTEXITCODE -ne 0) {
         Write-Host 'Installing build dependencies...'
@@ -704,6 +798,7 @@ try {
 if (-not (Test-Path -LiteralPath (Join-Path $BaseAppDir 'Smart7z.exe') -PathType Leaf)) {
     throw 'PyInstaller completed without producing Smart7z.exe.'
 }
+Assert-MinimalQtRuntime -Root $BaseAppDir
 
 $SevenZipDir = @(
     (Join-Path $SourceDir '.build-tools\7zip'),
@@ -822,6 +917,7 @@ Compress-Archive -LiteralPath $PortableDir -DestinationPath $PortableZip -Compre
 if (-not (Test-Path -LiteralPath (Join-Path $PortableDir 'portable.flag') -PathType Leaf)) {
     throw 'Portable release is missing portable.flag.'
 }
+Assert-MinimalQtRuntime -Root $PortableDir
 Assert-ReleaseArchive `
     -ArchivePath $PortableZip `
     -PasswordEntrySuffix 'code.txt' `

@@ -42,9 +42,11 @@ from PySide6.QtGui import (
     QPainter,
     QPalette,
     QPixmap,
+    QPolygonF,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QAbstractSpinBox,
     QApplication,
     QButtonGroup,
     QCheckBox,
@@ -72,6 +74,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStyle,
     QStyleFactory,
+    QStyleOptionSpinBox,
     QStyledItemDelegate,
     QTabWidget,
     QTableView,
@@ -560,6 +563,62 @@ class DropOverlay(QFrame):
         self.hide()
 
 
+class SoftStepperSpinBox(QSpinBox):
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+
+        # QSS owns the quiet stepper backgrounds; draw compact arrows explicitly
+        # so they remain visible on Windows styles that suppress native arrows.
+        option = QStyleOptionSpinBox()
+        self.initStyleOption(option)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        controls = (
+            (
+                QStyle.SubControl.SC_SpinBoxUp,
+                QAbstractSpinBox.StepEnabledFlag.StepUpEnabled,
+                True,
+            ),
+            (
+                QStyle.SubControl.SC_SpinBoxDown,
+                QAbstractSpinBox.StepEnabledFlag.StepDownEnabled,
+                False,
+            ),
+        )
+        for control, enabled_flag, points_up in controls:
+            rect = self.style().subControlRect(
+                QStyle.ComplexControl.CC_SpinBox,
+                option,
+                control,
+                self,
+            )
+            painter.setBrush(
+                QColor(
+                    "#46514f"
+                    if self.isEnabled() and option.stepEnabled & enabled_flag
+                    else "#9da5a3"
+                )
+            )
+            center = rect.center()
+            half_width = 3.0
+            half_height = 1.75
+            if points_up:
+                points = (
+                    QPointF(center.x() - half_width, center.y() + half_height),
+                    QPointF(center.x(), center.y() - half_height),
+                    QPointF(center.x() + half_width, center.y() + half_height),
+                )
+            else:
+                points = (
+                    QPointF(center.x() - half_width, center.y() - half_height),
+                    QPointF(center.x(), center.y() + half_height),
+                    QPointF(center.x() + half_width, center.y() - half_height),
+                )
+            painter.drawPolygon(QPolygonF(points))
+
+
 class SettingsDialog(QDialog):
     def __init__(self, config: dict, parent: QWidget):
         super().__init__(parent)
@@ -593,9 +652,10 @@ class SettingsDialog(QDialog):
         processing_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         processing_form.setHorizontalSpacing(12)
         processing_form.setVerticalSpacing(10)
-        self.depth_spin = QSpinBox()
+        self.depth_spin = SoftStepperSpinBox()
+        self.depth_spin.setObjectName("depthSpin")
         self.depth_spin.setRange(0, 20)
-        self.depth_spin.setValue(int(config.get("max_nested_depth", 2) or 2))
+        self.depth_spin.setValue(int(config.get("max_nested_depth", 2)))
         self.wait_space_check = QCheckBox("空间不足时等待")
         self.wait_space_check.setChecked(bool(config.get("wait_disk_space", True)))
         processing_form.addRow("最大嵌套深度", self.depth_spin)
@@ -694,6 +754,8 @@ class Smart7zQtWindow(QMainWindow):
         )
         self._context_auto_close_abnormal = False
         self._context_auto_close_generation = 0
+        self._startup_processing_scheduled = False
+        self._startup_args_processed = False
 
         self._scan_thread: Optional[threading.Thread] = None
         self._scan_cancel = threading.Event()
@@ -717,7 +779,6 @@ class Smart7zQtWindow(QMainWindow):
         self._build_ui()
         self._setup_scheduler()
         self._update_summary()
-        QTimer.singleShot(100, self._process_startup_args)
 
     def _build_ui(self) -> None:
         self._build_menus()
@@ -1031,7 +1092,7 @@ class Smart7zQtWindow(QMainWindow):
         toolbar_layout.addWidget(self.pending_count_label)
         toolbar_layout.addStretch(1)
         self.cancel_current_button = self._queue_action_button(
-            "取消当前", "中断正在运行的任务", self._cancel_current
+            "终止当前任务", "终止当前正在运行的任务", self._cancel_current
         )
         self.cancel_selected_button = self._queue_action_button(
             "取消选中", "中断选中的未完成任务", self._cancel_selected
@@ -1281,7 +1342,7 @@ class Smart7zQtWindow(QMainWindow):
         candidate["deep_scan"] = self.scan_actions[SCAN_MODE_DEEP].isChecked()
         candidate["steganographier_compat_mode"] = self.scan_actions[SCAN_MODE_STEGANOGRAPHIER].isChecked()
         candidate["_app_dir"] = get_app_dir()
-        candidate["max_nested_depth"] = int(candidate.get("max_nested_depth", 2) or 2)
+        candidate["max_nested_depth"] = int(candidate.get("max_nested_depth", 2))
         candidate["wait_disk_space"] = bool(candidate.get("wait_disk_space", True))
         return candidate
 
@@ -1441,7 +1502,28 @@ class Smart7zQtWindow(QMainWindow):
             logger.exception("Qt callback failed")
             self._append_log_line("界面回调失败，请查看日志。")
 
+    def _start_startup_processing(self) -> bool:
+        if (
+            self._closing
+            or self._shutdown_complete
+            or self._startup_processing_scheduled
+            or self._startup_args_processed
+        ):
+            return False
+        self._startup_processing_scheduled = True
+        QTimer.singleShot(100, self._process_startup_args)
+        return True
+
     def _process_startup_args(self) -> None:
+        self._startup_processing_scheduled = False
+        if (
+            self._closing
+            or self._shutdown_complete
+            or self._startup_args_processed
+            or self.scheduler is None
+        ):
+            return
+        self._startup_args_processed = True
         if self.startup_args:
             self._process_external_paths(
                 self.startup_args,
@@ -2591,8 +2673,27 @@ QLineEdit, QComboBox, QSpinBox {
     border-radius: 4px;
     background: #ffffff;
     selection-background-color: #d7efeb;
+    selection-color: #1f1f1f;
 }
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: #00796b; }
+QSpinBox#depthSpin { padding-right: 21px; }
+QSpinBox#depthSpin::up-button, QSpinBox#depthSpin::down-button {
+    width: 18px;
+    border: 0;
+    border-left: 1px solid #cfd8d5;
+    background: #f5f7f7;
+}
+QSpinBox#depthSpin::up-button {
+    border-top-right-radius: 3px;
+    border-bottom: 1px solid #dfe5e3;
+}
+QSpinBox#depthSpin::down-button { border-bottom-right-radius: 3px; }
+QSpinBox#depthSpin::up-button:hover, QSpinBox#depthSpin::down-button:hover {
+    background: #e8f1ef;
+}
+QSpinBox#depthSpin::up-button:pressed, QSpinBox#depthSpin::down-button:pressed {
+    background: #d8e8e5;
+}
 QGroupBox#settingsGroup {
     margin-top: 8px;
     padding: 12px 10px 10px;
@@ -2803,8 +2904,8 @@ def run_app(argv=None) -> int:
         window.ipc_server = ipc
         if not ipc.start():
             retry_result = _forward_launch_request(request)
-            retry_exit_code = _qt_forward_exit_code(retry_result, None)
             window._shutdown(force=True)
+            retry_exit_code = _qt_forward_exit_code(retry_result, None)
             if retry_exit_code is not None:
                 return retry_exit_code
             QMessageBox.critical(
@@ -2815,6 +2916,7 @@ def run_app(argv=None) -> int:
             return 1
         window.show()
         window.activate_window()
+        window._start_startup_processing()
         return app.exec()
     finally:
         shutdown_complete = True
