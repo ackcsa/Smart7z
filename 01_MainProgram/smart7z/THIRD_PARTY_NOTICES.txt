@@ -14,11 +14,17 @@ source archives described in Qt-PySide6-CORRESPONDING_SOURCE.txt.
 Python
   Copyright Python Software Foundation and contributors.
   Distributed under the Python Software Foundation License.
-  The Windows build also carries unmodified Microsoft Distributable Code in
-  the bundled runtime DLLs. Redistribution remains subject to Microsoft's
-  distribution requirements; see the Microsoft Distributable Code section of
-  licenses/Python-LICENSE.txt. These components are provided for Microsoft
-  Windows only and do not imply Microsoft endorsement.
+
+Microsoft Visual C++ Runtime
+  The Windows build carries one consolidated set of unmodified x64 runtime
+  DLLs selected from the locked PySide6_Essentials 6.11.1 wheel. See
+  Microsoft-Visual-Cpp-Runtime-NOTICE.txt and
+  licenses/Microsoft-Visual-Cpp-Runtime-manifest.json for the exact files,
+  versions, hashes, source, and Microsoft redistribution references. The
+  official runtime terms are included as
+  licenses/Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx. The Microsoft
+  Distributable Code section of licenses/Python-LICENSE.txt also describes
+  restrictions that apply to the Python Windows distribution.
 
 Qt 6.11.1 / Qt for Python 6.11.1
   The runtime includes QtBase 6.11.1, PySide6 6.11.1, and Shiboken6 6.11.1.

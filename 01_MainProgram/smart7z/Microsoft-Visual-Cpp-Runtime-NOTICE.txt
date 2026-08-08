@@ -1,0 +1,21 @@
+Microsoft Visual C++ Runtime notice
+===================================
+
+The Windows distribution includes unmodified x64 Microsoft Visual C++
+Runtime DLLs required by Qt for Python. Smart7z selects the files from the
+locked PySide6_Essentials 6.11.1 wheel and consolidates one copy of each
+required DLL in the PyInstaller _internal directory.
+
+The exact file names, versions, SHA-256 hashes, source package, and placement
+policy are recorded in licenses/Microsoft-Visual-Cpp-Runtime-manifest.json.
+The official Microsoft Visual C++ Runtime 2015-2022 license terms are included
+as licenses/Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx.
+
+These files are provided only for use with Smart7z on Microsoft Windows.
+Redistribution and use remain subject to Microsoft's applicable Visual Studio
+and Visual C++ Redistributable terms. Microsoft does not endorse Smart7z, and
+Microsoft names and marks remain the property of Microsoft.
+
+Official Microsoft deployment and redistribution information:
+https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+https://visualstudio.microsoft.com/license-terms/

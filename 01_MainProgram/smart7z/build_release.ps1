@@ -47,6 +47,13 @@ $ReleaseLicenseDir = Join-Path $ReleaseResourcesDir 'licenses'
 $ReleaseCorrespondingSourceDir = Join-Path $ReleaseResourcesDir 'corresponding-source'
 $ReleaseSourceManifest = Join-Path $ReleaseLicenseDir 'Qt-PySide6-source-manifest.json'
 $ReleaseSourceNotice = Join-Path $ReleaseResourcesDir 'Qt-PySide6-CORRESPONDING_SOURCE.txt'
+$VcRuntimeNoticeName = 'Microsoft-Visual-Cpp-Runtime-NOTICE.txt'
+$VcRuntimeManifestName = 'Microsoft-Visual-Cpp-Runtime-manifest.json'
+$VcRuntimeLicenseName = 'Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx'
+$VcRuntimeNoticePath = Join-Path $SourceDir $VcRuntimeNoticeName
+$VcRuntimeLicensePath = Join-Path $SourceDir $VcRuntimeLicenseName
+$VcRuntimeLicenseSha256 = 'F1E3D56CEB2AD68AAE0711B910375009E651AC5530FA0760F0DEA6E81E54FAE1'
+$ReleaseVcRuntimeManifest = Join-Path $ReleaseLicenseDir $VcRuntimeManifestName
 $ForbiddenLegacyNames = @(
     'dWlfYXBw',
     'dGVzdF91aV9saWZlY3ljbGU=',
@@ -400,9 +407,31 @@ function Assert-MinimalQtRuntime {
         'plugins/platforms/qwindows.dll',
         'plugins/styles/qmodernwindowsstyle.dll'
     )
+    $canonicalVcRuntimeFiles = @(
+        'MSVCP140.dll',
+        'MSVCP140_1.dll',
+        'MSVCP140_2.dll',
+        'VCRUNTIME140.dll',
+        'VCRUNTIME140_1.dll'
+    )
+    $expectedVcRuntimeVersion = '14.44.35211.0'
+    $vcRuntimePattern = '(?i)^(?:concrt140|msvcp140(?:_1|_2|_atomic_wait|_codecvt_ids)?|vcruntime140(?:_1)?)\.dll$'
     $forbiddenQtAuxiliaryFiles = @('opengl32sw.dll')
     $requiredFiles = @($allowedBindings + $allowedLibraries + $allowedPlugins)
     $violations = @()
+
+    $internalRoot = [IO.Path]::GetFullPath((Split-Path -Parent $pysideRoot))
+    foreach ($runtimeName in $canonicalVcRuntimeFiles) {
+        $runtimePath = Join-Path $internalRoot $runtimeName
+        if (-not (Test-Path -LiteralPath $runtimePath -PathType Leaf)) {
+            $violations += "missing: $runtimeName"
+            continue
+        }
+        $runtimeVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($runtimePath).FileVersion
+        if ($runtimeVersion -ne $expectedVcRuntimeVersion) {
+            $violations += "unexpected version: $runtimeName ($runtimeVersion)"
+        }
+    }
 
     foreach ($relative in $requiredFiles) {
         $requiredPath = Join-Path $pysideRoot ($relative.Replace('/', '\'))
@@ -421,6 +450,17 @@ function Assert-MinimalQtRuntime {
             $filePath.Substring($pysidePrefix.Length).Replace('\', '/')
         } else {
             $filePath.Substring($rootPrefix.Length).Replace('\', '/')
+        }
+
+        if ($file.Name -match $vcRuntimePattern) {
+            $fileDirectory = [IO.Path]::GetFullPath($file.DirectoryName)
+            if (
+                -not $fileDirectory.Equals($internalRoot, [StringComparison]::OrdinalIgnoreCase) -or
+                $canonicalVcRuntimeFiles -notcontains $file.Name
+            ) {
+                $violations += $relative
+            }
+            continue
         }
 
         if ($file.Name -match '(?i)^Qt.*\.pyd$') {
@@ -446,6 +486,10 @@ function Assert-MinimalQtRuntime {
             $violations += $relative
             continue
         }
+        if ($relative.StartsWith('translations/', [StringComparison]::OrdinalIgnoreCase)) {
+            $violations += $relative
+            continue
+        }
         if (
             $relative.StartsWith('plugins/', [StringComparison]::OrdinalIgnoreCase) -and
             $allowedPlugins -notcontains $relative
@@ -465,6 +509,13 @@ function Assert-MinimalQtRuntime {
 $OriginalLocation = Get-Location
 
 try {
+    if ($InnoSetupCompiler -and -not [IO.Path]::IsPathRooted($InnoSetupCompiler)) {
+        $InnoSetupCompiler = Join-Path $SourceDir $InnoSetupCompiler
+    }
+    if ($InnoSetupCompiler) {
+        $InnoSetupCompiler = [IO.Path]::GetFullPath($InnoSetupCompiler)
+    }
+
     if (-not $PythonExe) {
         $pythonCandidates = @($BundledPython)
         foreach ($commandName in @('python', 'py')) {
@@ -540,7 +591,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Could not create the build environment.' }
     }
 
-    $dependencyProbe = "from importlib.metadata import version; expected=(('PyInstaller','6.21.0'),('pyinstaller-hooks-contrib','2026.6'),('Pillow','12.3.0'),('PySide6','6.11.1'),('altgraph','0.17.5'),('packaging','26.3'),('pefile','2024.8.26'),('pywin32-ctypes','0.2.3'),('setuptools','83.0.0')); raise SystemExit(0 if all(version(name)==wanted for name,wanted in expected) else 1)"
+    $dependencyProbe = "from importlib.metadata import version; expected=(('PyInstaller','6.21.0'),('pyinstaller-hooks-contrib','2026.6'),('Pillow','12.3.0'),('PySide6','6.11.1'),('PySide6_Essentials','6.11.1'),('PySide6_Addons','6.11.1'),('shiboken6','6.11.1'),('altgraph','0.17.5'),('packaging','26.3'),('pefile','2024.8.26'),('pywin32-ctypes','0.2.3'),('setuptools','83.0.0')); raise SystemExit(0 if all(version(name)==wanted for name,wanted in expected) else 1)"
     & $VenvPython -c $dependencyProbe
     if ($LASTEXITCODE -ne 0) {
         Write-Host 'Installing build dependencies...'
@@ -755,6 +806,13 @@ try {
 if ($LASTEXITCODE -ne 0) {
     throw 'Could not extract verified Qt/PySide license bodies and corresponding source.'
 }
+$vcRuntimeLicenseHash = (
+    Get-FileHash -LiteralPath $VcRuntimeLicensePath -Algorithm SHA256
+).Hash.ToUpperInvariant()
+if ($vcRuntimeLicenseHash -ne $VcRuntimeLicenseSha256) {
+    throw "Microsoft Visual C++ Runtime license hash mismatch: $vcRuntimeLicenseHash"
+}
+Copy-Item -LiteralPath $VcRuntimeLicensePath -Destination (Join-Path $ReleaseLicenseDir $VcRuntimeLicenseName) -Force
 
 $sourceNotice = @"
 Smart7z $Version Qt/PySide corresponding source notice
@@ -800,6 +858,39 @@ if (-not (Test-Path -LiteralPath (Join-Path $BaseAppDir 'Smart7z.exe') -PathType
 }
 Assert-MinimalQtRuntime -Root $BaseAppDir
 
+$baseInternalDir = Join-Path $BaseAppDir '_internal'
+$vcRuntimeNames = @(
+    'MSVCP140.dll',
+    'MSVCP140_1.dll',
+    'MSVCP140_2.dll',
+    'VCRUNTIME140.dll',
+    'VCRUNTIME140_1.dll'
+)
+$vcRuntimeEntries = @(
+    foreach ($runtimeName in $vcRuntimeNames) {
+        $runtimePath = Join-Path $baseInternalDir $runtimeName
+        $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($runtimePath)
+        [ordered]@{
+            file = $runtimeName
+            file_version = $versionInfo.FileVersion
+            sha256 = (Get-FileHash -LiteralPath $runtimePath -Algorithm SHA256).Hash
+        }
+    }
+)
+$vcRuntimeManifest = [ordered]@{
+    component = 'Microsoft Visual C++ Runtime'
+    architecture = 'x64'
+    source_package = 'PySide6_Essentials==6.11.1 official wheel'
+    canonical_directory = '_internal'
+    selection_policy = 'smart7z.spec selects PySide6_Essentials wheel copies and removes package-local duplicates'
+    files = $vcRuntimeEntries
+}
+[IO.File]::WriteAllText(
+    $ReleaseVcRuntimeManifest,
+    (($vcRuntimeManifest | ConvertTo-Json -Depth 4) + [Environment]::NewLine),
+    [Text.UTF8Encoding]::new($false)
+)
+
 $SevenZipDir = @(
     (Join-Path $SourceDir '.build-tools\7zip'),
     (Join-Path $env:ProgramFiles '7-Zip'),
@@ -830,6 +921,7 @@ Copy-Item -LiteralPath $ReleasePasswordFile -Destination (Join-Path $BaseAppDir 
 Copy-Item -LiteralPath (Join-Path $WorkspaceDir 'smart7z_user_manual .html') -Destination (Join-Path $BaseAppDir 'Smart7z-User-Manual.html') -Force
 Copy-Item -LiteralPath (Join-Path $SourceDir 'THIRD_PARTY_NOTICES.txt') -Destination (Join-Path $BaseAppDir 'THIRD_PARTY_NOTICES.txt') -Force
 Copy-Item -LiteralPath $ReleaseSourceNotice -Destination (Join-Path $BaseAppDir 'Qt-PySide6-CORRESPONDING_SOURCE.txt') -Force
+Copy-Item -LiteralPath $VcRuntimeNoticePath -Destination (Join-Path $BaseAppDir $VcRuntimeNoticeName) -Force
 
 $installedReadme = (Get-Content -LiteralPath (Join-Path $SourceDir 'release_readme_installed.txt') -Raw -Encoding UTF8).Replace('__VERSION__', $Version)
 [IO.File]::WriteAllText(
@@ -872,6 +964,8 @@ foreach ($qtLicenseName in $qtLicenseNames) {
     }
     Copy-Item -LiteralPath $sourceLicense -Destination (Join-Path $LicenseDir $qtLicenseName) -Force
 }
+Copy-Item -LiteralPath $ReleaseVcRuntimeManifest -Destination (Join-Path $LicenseDir $VcRuntimeManifestName) -Force
+Copy-Item -LiteralPath $VcRuntimeLicensePath -Destination (Join-Path $LicenseDir $VcRuntimeLicenseName) -Force
 $requiredLicenses = @(
     'Python-LICENSE.txt',
     'PyInstaller-COPYING.txt',
@@ -882,7 +976,9 @@ $requiredLicenses = @(
     'PySide6-LGPL-3.0-only.txt',
     'PySide6-GPL-3.0-only.txt',
     'PySide6-Qt-GPL-exception-1.0.txt',
-    'Qt-PySide6-source-manifest.json'
+    'Qt-PySide6-source-manifest.json',
+    'Microsoft-Visual-Cpp-Runtime-manifest.json',
+    'Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx'
 )
 foreach ($licenseName in $requiredLicenses) {
     if (-not (Test-Path -LiteralPath (Join-Path $LicenseDir $licenseName) -PathType Leaf)) {
@@ -890,7 +986,7 @@ foreach ($licenseName in $requiredLicenses) {
     }
 }
 
-foreach ($requiredName in @('Smart7z.exe', '7z.exe', '7z.dll', '7-Zip-License.txt', 'code.txt', 'Smart7z-User-Manual.html', 'README.txt', 'THIRD_PARTY_NOTICES.txt', 'Qt-PySide6-CORRESPONDING_SOURCE.txt')) {
+foreach ($requiredName in @('Smart7z.exe', '7z.exe', '7z.dll', '7-Zip-License.txt', 'code.txt', 'Smart7z-User-Manual.html', 'README.txt', 'THIRD_PARTY_NOTICES.txt', 'Qt-PySide6-CORRESPONDING_SOURCE.txt', 'Microsoft-Visual-Cpp-Runtime-NOTICE.txt')) {
     if (-not (Test-Path -LiteralPath (Join-Path $BaseAppDir $requiredName) -PathType Leaf)) {
         throw "Shared application file is missing: $requiredName"
     }
@@ -926,13 +1022,16 @@ Assert-ReleaseArchive `
         'portable.flag',
         'THIRD_PARTY_NOTICES.txt',
         'Qt-PySide6-CORRESPONDING_SOURCE.txt',
+        'Microsoft-Visual-Cpp-Runtime-NOTICE.txt',
         'licenses/Qt-LGPL-3.0-only.txt',
         'licenses/Qt-GPL-3.0-only.txt',
         'licenses/Qt-GPL-exception-1.0.txt',
         'licenses/PySide6-LGPL-3.0-only.txt',
         'licenses/PySide6-GPL-3.0-only.txt',
         'licenses/PySide6-Qt-GPL-exception-1.0.txt',
-        'licenses/Qt-PySide6-source-manifest.json'
+        'licenses/Qt-PySide6-source-manifest.json',
+        'licenses/Microsoft-Visual-Cpp-Runtime-manifest.json',
+        'licenses/Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx'
     ) `
     -TextAuditExcludedPrefixes @('licenses/') `
     -AuditText
@@ -962,7 +1061,8 @@ $sourceRootFiles = @(
     'smart7z.spec',
     'smart7z_installer.iss',
     'smart7z_version_info.txt.in',
-    'THIRD_PARTY_NOTICES.txt'
+    'THIRD_PARTY_NOTICES.txt',
+    'Microsoft-Visual-Cpp-Runtime-NOTICE.txt'
 )
 $sourceRootFiles += Get-ChildItem -LiteralPath $SourceDir -File -Filter '*.py' | ForEach-Object Name
 foreach ($sourceName in ($sourceRootFiles | Select-Object -Unique)) {
@@ -1013,11 +1113,14 @@ $requiredSourceEntries += @(
     'licenses/PySide6-GPL-3.0-only.txt',
     'licenses/PySide6-Qt-GPL-exception-1.0.txt',
     'licenses/Qt-PySide6-source-manifest.json',
+    'licenses/Microsoft-Visual-Cpp-Runtime-manifest.json',
+    'licenses/Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx',
     'corresponding-source/qtbase-everywhere-src-6.11.1/CMakeLists.txt',
     'corresponding-source/qtbase-everywhere-src-6.11.1/LICENSES/LGPL-3.0-only.txt',
     'corresponding-source/pyside-setup-everywhere-src-6.11.1/CMakeLists.txt',
     'corresponding-source/pyside-setup-everywhere-src-6.11.1/LICENSES/LGPL-3.0-only.txt',
-    'Qt-PySide6-CORRESPONDING_SOURCE.txt'
+    'Qt-PySide6-CORRESPONDING_SOURCE.txt',
+    'Microsoft-Visual-Cpp-Runtime-NOTICE.txt'
 )
 Assert-ReleaseArchive `
     -ArchivePath $SourceZip `

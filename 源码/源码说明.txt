@@ -16,7 +16,8 @@ Smart 7z Ultra 1.0.0 源码版
 新进程有界等待转交或取得互斥量后接管，不创建并行任务窗口。
 
 发行源码包同时包含 licenses/ 下的 Qt/PySide6/Shiboken6 许可证正文、版本与
-归档校验清单，以及 corresponding-source/ 下的对应 Qt 与 PySide6 官方源码树。
+归档校验清单、Microsoft Visual C++ Runtime 官方许可文档，以及 corresponding-source/
+下的对应 Qt 与 PySide6 官方源码树。
 
 处理能力包括 SteganographierGUI 非全读取兼容探测、普通 MP4 追加 ZIP、
 ZArchiver free 原子、MKV ZIP 附件、ZIP64 严格几何校验、深度扫描候选复用、

@@ -47,6 +47,13 @@ allowed_qt_plugin_paths = {
     "plugins/platforms/qwindows.dll",
     "plugins/styles/qmodernwindowsstyle.dll",
 }
+canonical_vc_runtime_files = {
+    "msvcp140.dll",
+    "msvcp140_1.dll",
+    "msvcp140_2.dll",
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+}
 
 
 def _pyside6_relative_toc_name(entry):
@@ -79,11 +86,38 @@ def _keep_minimal_qt_entry(entry):
     relative_leaf = PurePosixPath(relative_lower).name
     if relative_lower.startswith("qml/"):
         return False
+    if relative_lower.startswith("translations/"):
+        return False
     if relative_lower.startswith("plugins/"):
         return relative_lower in allowed_qt_plugin_paths
     if relative_leaf.startswith("qt") and relative_leaf.endswith(".pyd"):
         return relative_leaf in allowed_qt_binding_files
     return True
+
+
+def _consolidate_vc_runtime_entries(entries):
+    retained = []
+    selected = {}
+    for entry in entries:
+        normalized, pyside_relative = _pyside6_relative_toc_name(entry)
+        leaf = PurePosixPath(normalized).name.casefold()
+        if leaf not in canonical_vc_runtime_files:
+            retained.append(entry)
+            continue
+        if pyside_relative is not None and "/" not in pyside_relative:
+            selected.setdefault(leaf, (normalized, entry))
+
+    missing = sorted(canonical_vc_runtime_files - selected.keys())
+    if missing:
+        raise RuntimeError(
+            "PySide6_Essentials wheel is missing required Visual C++ runtime files: "
+            + ", ".join(missing)
+        )
+
+    for leaf in sorted(canonical_vc_runtime_files):
+        normalized, entry = selected[leaf]
+        retained.append((PurePosixPath(normalized).name, *entry[1:]))
+    return retained
 
 a = Analysis(
     [str(source_dir / "smart7z.py")],
@@ -104,7 +138,9 @@ a = Analysis(
     noarchive=False,
     optimize=1,
 )
-a.binaries = [entry for entry in a.binaries if _keep_minimal_qt_entry(entry)]
+a.binaries = _consolidate_vc_runtime_entries(
+    [entry for entry in a.binaries if _keep_minimal_qt_entry(entry)]
+)
 a.datas = [entry for entry in a.datas if _keep_minimal_qt_entry(entry)]
 pyz = PYZ(a.pure)
 
