@@ -7,9 +7,13 @@ param(
 
     [string]$InnoSetupCompiler = '',
 
+<<<<<<< HEAD
     [string]$QtSourceCache = '',
 
     [string]$CSharpCompiler = ''
+=======
+    [string]$QtSourceCache = ''
+>>>>>>> origin/main
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,9 +44,12 @@ $ReleasePasswordFile = Join-Path $ReleaseResourcesDir 'code.txt'
 $ReleaseConfigFile = Join-Path $ReleaseResourcesDir 'smart7z_config.json'
 $ReleaseConfigGeneratorPath = Join-Path $ReleaseResourcesDir 'generate_release_config.py'
 $QtSourceExtractorPath = Join-Path $ReleaseResourcesDir 'extract_qt_source.py'
+<<<<<<< HEAD
 $ShellLauncherSource = Join-Path $SourceDir 'shell_launcher.cs'
 $ShellLauncherVersionSource = Join-Path $ReleaseResourcesDir 'shell_launcher_version.cs'
 $ShellLauncherName = 'Smart7zShell.exe'
+=======
+>>>>>>> origin/main
 $BundledPython = Join-Path $SourceDir '.build-tools\python312\python.exe'
 $QtBaseArchiveName = 'qtbase-everywhere-src-6.11.1.tar.xz'
 $PySideArchiveName = 'pyside-setup-everywhere-src-6.11.1.tar.xz'
@@ -520,12 +527,15 @@ try {
     if ($InnoSetupCompiler) {
         $InnoSetupCompiler = [IO.Path]::GetFullPath($InnoSetupCompiler)
     }
+<<<<<<< HEAD
     if ($CSharpCompiler -and -not [IO.Path]::IsPathRooted($CSharpCompiler)) {
         $CSharpCompiler = Join-Path $SourceDir $CSharpCompiler
     }
     if ($CSharpCompiler) {
         $CSharpCompiler = [IO.Path]::GetFullPath($CSharpCompiler)
     }
+=======
+>>>>>>> origin/main
 
     if (-not $PythonExe) {
         $pythonCandidates = @($BundledPython)
@@ -882,6 +892,40 @@ try {
 if (-not (Test-Path -LiteralPath (Join-Path $BaseAppDir 'Smart7z.exe') -PathType Leaf)) {
     throw 'PyInstaller completed without producing Smart7z.exe.'
 }
+Assert-MinimalQtRuntime -Root $BaseAppDir
+
+$baseInternalDir = Join-Path $BaseAppDir '_internal'
+$vcRuntimeNames = @(
+    'MSVCP140.dll',
+    'MSVCP140_1.dll',
+    'MSVCP140_2.dll',
+    'VCRUNTIME140.dll',
+    'VCRUNTIME140_1.dll'
+)
+$vcRuntimeEntries = @(
+    foreach ($runtimeName in $vcRuntimeNames) {
+        $runtimePath = Join-Path $baseInternalDir $runtimeName
+        $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($runtimePath)
+        [ordered]@{
+            file = $runtimeName
+            file_version = $versionInfo.FileVersion
+            sha256 = (Get-FileHash -LiteralPath $runtimePath -Algorithm SHA256).Hash
+        }
+    }
+)
+$vcRuntimeManifest = [ordered]@{
+    component = 'Microsoft Visual C++ Runtime'
+    architecture = 'x64'
+    source_package = 'PySide6_Essentials==6.11.1 official wheel'
+    canonical_directory = '_internal'
+    selection_policy = 'smart7z.spec selects PySide6_Essentials wheel copies and removes package-local duplicates'
+    files = $vcRuntimeEntries
+}
+[IO.File]::WriteAllText(
+    $ReleaseVcRuntimeManifest,
+    (($vcRuntimeManifest | ConvertTo-Json -Depth 4) + [Environment]::NewLine),
+    [Text.UTF8Encoding]::new($false)
+)
 
 Write-Host 'Building lightweight Explorer launcher...'
 $assemblyVersionParts = @($Version.Split('.'))
@@ -988,7 +1032,10 @@ Write-Host 'Assembling shared application files...'
 Copy-Item -LiteralPath $SevenZipExe -Destination (Join-Path $BaseAppDir '7z.exe') -Force
 Copy-Item -LiteralPath $SevenZipDll -Destination (Join-Path $BaseAppDir '7z.dll') -Force
 Copy-Item -LiteralPath $SevenZipLicense -Destination (Join-Path $BaseAppDir '7-Zip-License.txt') -Force
+<<<<<<< HEAD
 Copy-Item -LiteralPath (Join-Path $SourceDir 'build_assets\smart7z.ico') -Destination (Join-Path $BaseAppDir 'smart7z.ico') -Force
+=======
+>>>>>>> origin/main
 Copy-Item -LiteralPath $ReleasePasswordFile -Destination (Join-Path $BaseAppDir 'code.txt') -Force
 Copy-Item -LiteralPath (Join-Path $WorkspaceDir 'smart7z_user_manual .html') -Destination (Join-Path $BaseAppDir 'Smart7z-User-Manual.html') -Force
 Copy-Item -LiteralPath (Join-Path $SourceDir 'THIRD_PARTY_NOTICES.txt') -Destination (Join-Path $BaseAppDir 'THIRD_PARTY_NOTICES.txt') -Force
@@ -1058,7 +1105,11 @@ foreach ($licenseName in $requiredLicenses) {
     }
 }
 
+<<<<<<< HEAD
 foreach ($requiredName in @('Smart7z.exe', 'Smart7zShell.exe', 'smart7z.ico', '7z.exe', '7z.dll', '7-Zip-License.txt', 'code.txt', 'Smart7z-User-Manual.html', 'README.txt', 'THIRD_PARTY_NOTICES.txt', 'Qt-PySide6-CORRESPONDING_SOURCE.txt', 'Microsoft-Visual-Cpp-Runtime-NOTICE.txt')) {
+=======
+foreach ($requiredName in @('Smart7z.exe', '7z.exe', '7z.dll', '7-Zip-License.txt', 'code.txt', 'Smart7z-User-Manual.html', 'README.txt', 'THIRD_PARTY_NOTICES.txt', 'Qt-PySide6-CORRESPONDING_SOURCE.txt', 'Microsoft-Visual-Cpp-Runtime-NOTICE.txt')) {
+>>>>>>> origin/main
     if (-not (Test-Path -LiteralPath (Join-Path $BaseAppDir $requiredName) -PathType Leaf)) {
         throw "Shared application file is missing: $requiredName"
     }
@@ -1091,8 +1142,11 @@ Assert-ReleaseArchive `
     -PasswordEntrySuffix 'code.txt' `
     -RequiredEntries @(
         'Smart7z.exe',
+<<<<<<< HEAD
         'Smart7zShell.exe',
         'smart7z.ico',
+=======
+>>>>>>> origin/main
         'portable.flag',
         'THIRD_PARTY_NOTICES.txt',
         'Qt-PySide6-CORRESPONDING_SOURCE.txt',
@@ -1135,7 +1189,10 @@ $sourceRootFiles = @(
     'smart7z.spec',
     'smart7z_installer.iss',
     'smart7z_version_info.txt.in',
+<<<<<<< HEAD
     'shell_launcher.cs',
+=======
+>>>>>>> origin/main
     'THIRD_PARTY_NOTICES.txt',
     'Microsoft-Visual-Cpp-Runtime-NOTICE.txt'
 )
@@ -1174,9 +1231,13 @@ Compress-Archive -LiteralPath $SourcePackageDir -DestinationPath $SourceZip -Com
 
 $requiredSourceEntries = @(
     'ui_qt.py',
+<<<<<<< HEAD
     'launch_ipc.py',
     'runtime_ipc.py',
     'shell_launcher.cs',
+=======
+    'runtime_ipc.py',
+>>>>>>> origin/main
     'tests/test_ui_runtime.py'
 )
 $requiredSourceEntries += Get-ChildItem -LiteralPath (Join-Path $SourceDir 'tests') -File |

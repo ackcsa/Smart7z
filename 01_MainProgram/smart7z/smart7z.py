@@ -10,6 +10,7 @@ def main(argv=None) -> int:
         argv = sys.argv[1:]
     fast_result = None
     try:
+<<<<<<< HEAD
         # Right-click actions commonly start a short-lived second process.
         # Forward to an already-running instance before importing PySide6 so
         # Explorer does not wait for the full Qt cold-start path.
@@ -26,6 +27,11 @@ def main(argv=None) -> int:
         from ui_qt import run_app
 
         return int(run_app(argv, initial_forward_result=fast_result) or 0)
+=======
+        from ui_qt import run_app
+
+        return int(run_app(argv) or 0)
+>>>>>>> origin/main
     except SystemExit as e:
         return int(e.code) if e.code is not None else 0
     except Exception:
@@ -35,11 +41,14 @@ def main(argv=None) -> int:
 
         error_msg = traceback.format_exc()
         try:
+<<<<<<< HEAD
             diagnostic = Path(tempfile.gettempdir()) / "Smart7z-startup-error.log"
             diagnostic.write_text(error_msg[:20000], encoding="utf-8")
         except Exception:
             pass
         try:
+=======
+>>>>>>> origin/main
             import ctypes
 
             ctypes.windll.user32.MessageBoxW(

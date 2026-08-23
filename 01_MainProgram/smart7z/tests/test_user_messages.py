@@ -20,8 +20,12 @@ MANUAL_PATH = (
     if PACKAGED_MANUAL_PATH.is_file()
     else WORKSPACE_MANUAL_PATH
 )
+<<<<<<< HEAD
 UI_PATH = PROJECT_ROOT / "ui_qt.py"
+=======
+>>>>>>> origin/main
 EXECUTOR_PATH = PROJECT_ROOT / "executor.py"
+UI_PATH = PROJECT_ROOT / "ui_qt.py"
 
 
 class TestUserMessageCatalog(unittest.TestCase):
@@ -184,11 +188,16 @@ class TestUserMessageCatalog(unittest.TestCase):
 
     def test_every_catalog_message_has_a_runtime_callsite(self):
         used_codes = set()
+<<<<<<< HEAD
         for path, function_names in (
             (EXECUTOR_PATH, {"format_user_message"}),
             (UI_PATH, {"log_event"}),
         ):
             tree = ast.parse(path.read_text(encoding="utf-8"))
+=======
+        for source_path in (EXECUTOR_PATH, UI_PATH):
+            tree = ast.parse(source_path.read_text(encoding="utf-8"))
+>>>>>>> origin/main
             for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
                 function = call.func
                 name = (
@@ -199,7 +208,7 @@ class TestUserMessageCatalog(unittest.TestCase):
                     else ""
                 )
                 if (
-                    name in function_names
+                    name in {"format_user_message", "_log_event"}
                     and call.args
                     and isinstance(call.args[0], ast.Constant)
                 ):

@@ -316,6 +316,7 @@ class TestQtIpcIntegration(unittest.TestCase):
                     ipc.close.assert_called_once_with()
                     scheduler.stop.assert_called_once_with()
 
+<<<<<<< HEAD
     def test_run_app_initial_presentation_preserves_context_auto_close(self):
         app = mock.Mock()
         app.exec.return_value = 0
@@ -360,6 +361,8 @@ class TestQtIpcIntegration(unittest.TestCase):
         )
         window._start_startup_processing.assert_called_once_with()
 
+=======
+>>>>>>> origin/main
     def test_run_app_does_not_release_mutex_before_shutdown_completes(self):
         app = mock.Mock()
         app.exec.return_value = 0

@@ -18,8 +18,11 @@ except ModuleNotFoundError:
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SPEC_PATH = PROJECT_ROOT / "smart7z.spec"
 BUILD_SCRIPT_PATH = PROJECT_ROOT / "build_release.ps1"
+<<<<<<< HEAD
 INSTALLER_SCRIPT_PATH = PROJECT_ROOT / "smart7z_installer.iss"
 SHELL_SOURCE_PATH = PROJECT_ROOT / "shell_launcher.cs"
+=======
+>>>>>>> origin/main
 REQUIREMENTS_PATH = PROJECT_ROOT / "requirements-build.txt"
 VC_RUNTIME_LICENSE_PATH = (
     PROJECT_ROOT / "Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx"
@@ -74,6 +77,7 @@ class _FakeAnalysis:
 
 
 class TestSmart7zSpecQtBoundary(unittest.TestCase):
+<<<<<<< HEAD
     def test_release_packages_versioned_lightweight_shell_launcher(self):
         self.assertTrue(SHELL_SOURCE_PATH.is_file())
         build_script = BUILD_SCRIPT_PATH.read_text(encoding="utf-8")
@@ -92,6 +96,8 @@ class TestSmart7zSpecQtBoundary(unittest.TestCase):
         self.assertIn("Pos(Lowercase(MainExecutable)", installer)
         self.assertIn("Smart7zShell.exe", installer)
 
+=======
+>>>>>>> origin/main
     def test_microsoft_runtime_license_is_pinned(self):
         self.assertTrue(VC_RUNTIME_LICENSE_PATH.is_file())
         actual = hashlib.sha256(VC_RUNTIME_LICENSE_PATH.read_bytes()).hexdigest().upper()

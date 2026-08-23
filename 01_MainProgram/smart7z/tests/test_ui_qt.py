@@ -1,24 +1,40 @@
 from __future__ import annotations
 
 import os
+<<<<<<< HEAD
 import sys
+=======
+import re
+>>>>>>> origin/main
 import tempfile
 import threading
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+<<<<<<< HEAD
+=======
+from types import SimpleNamespace
+>>>>>>> origin/main
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
     from PySide6.QtWidgets import QApplication
+<<<<<<< HEAD
+=======
+    from PySide6.QtTest import QTest
+>>>>>>> origin/main
 
     import ui_qt
     from config import DEFAULT_CONFIG
     from models import Job, JobState
 except ModuleNotFoundError:
     QApplication = None
+<<<<<<< HEAD
+=======
+    QTest = None
+>>>>>>> origin/main
     ui_qt = None
 
 
@@ -85,6 +101,322 @@ class _FakeScheduler:
         return 0
 
 
+<<<<<<< HEAD
+=======
+def _launch_request(**overrides):
+    values = {
+        "paths": (r"C:\incoming\sample.zip",),
+        "auto_start": True,
+        "cleanup_policy": "keep",
+        "extract_to_source": False,
+        "context_menu": False,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _forward_result(status, reason="", *, reached_existing=False):
+    return SimpleNamespace(
+        status=status,
+        reason=reason,
+        accepted=status == "accepted",
+        reached_existing=reached_existing,
+    )
+
+
+def _run_app_window():
+    window = mock.Mock()
+    window.startup_blocked = False
+    window.scheduler = object()
+    return window
+
+
+@unittest.skipIf(QApplication is None, "PySide6 is not installed")
+class TestQtRunAppLifecycle(unittest.TestCase):
+    def _qapplication_patch(self, app):
+        qapplication = mock.Mock()
+        qapplication.instance.return_value = app
+        return mock.patch.object(ui_qt, "QApplication", qapplication)
+
+    def test_accepted_request_exits_without_creating_window(self):
+        app = mock.Mock()
+        request = _launch_request()
+        accepted = _forward_result("accepted", reached_existing=True)
+
+        with (
+            self._qapplication_patch(app),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(ui_qt, "_forward_launch_request", return_value=accepted),
+            mock.patch.object(ui_qt, "create_mutex") as create_mutex,
+            mock.patch.object(ui_qt, "Smart7zQtWindow") as window_type,
+            mock.patch.object(ui_qt, "BoundedIPCServer") as ipc_type,
+        ):
+            exit_code = ui_qt.run_app([r"C:\incoming\sample.zip"])
+
+        self.assertEqual(exit_code, 0)
+        create_mutex.assert_not_called()
+        window_type.assert_not_called()
+        ipc_type.assert_not_called()
+        app.exec.assert_not_called()
+
+    def test_server_stopping_waits_and_eventually_forwards(self):
+        app = mock.Mock()
+        request = _launch_request()
+        stopping = _forward_result(
+            "rejected",
+            "server_stopping",
+            reached_existing=True,
+        )
+        accepted = _forward_result("accepted", reached_existing=True)
+
+        with (
+            self._qapplication_patch(app),
+            mock.patch.object(ui_qt.sys, "platform", "win32"),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(
+                ui_qt,
+                "_forward_launch_request",
+                side_effect=[stopping, stopping, accepted],
+            ) as forward,
+            mock.patch.object(ui_qt, "create_mutex", side_effect=[None, None]) as create_mutex,
+            mock.patch.object(ui_qt.time, "monotonic", side_effect=[100.0, 100.0]),
+            mock.patch.object(ui_qt.time, "sleep") as sleep,
+            mock.patch.object(ui_qt.QMessageBox, "critical") as critical,
+            mock.patch.object(ui_qt, "Scheduler") as scheduler_type,
+            mock.patch.object(ui_qt, "Smart7zQtWindow") as window_type,
+        ):
+            exit_code = ui_qt.run_app([])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(forward.call_count, 3)
+        self.assertEqual(create_mutex.call_count, 2)
+        sleep.assert_called_once_with(ui_qt.INSTANCE_STARTUP_POLL_SECONDS)
+        critical.assert_not_called()
+        scheduler_type.assert_not_called()
+        window_type.assert_not_called()
+        app.exec.assert_not_called()
+
+    def test_stopping_instance_exits_then_mutex_is_claimed_and_window_starts(self):
+        app = mock.Mock()
+        app.exec.return_value = 23
+        request = _launch_request(auto_start=False, extract_to_source=True)
+        stopping = _forward_result(
+            "rejected",
+            "server_stopping",
+            reached_existing=True,
+        )
+        unavailable = _forward_result("unavailable", "state_unavailable")
+        instance_mutex = object()
+        window = _run_app_window()
+        ipc = mock.Mock()
+        ipc.start.return_value = True
+
+        with (
+            self._qapplication_patch(app),
+            mock.patch.object(ui_qt.sys, "platform", "win32"),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(
+                ui_qt,
+                "_forward_launch_request",
+                side_effect=[stopping, unavailable],
+            ),
+            mock.patch.object(
+                ui_qt,
+                "create_mutex",
+                side_effect=[None, instance_mutex],
+            ) as create_mutex,
+            mock.patch.object(ui_qt, "close_mutex") as close_mutex,
+            mock.patch.object(ui_qt, "Smart7zQtWindow", return_value=window) as window_type,
+            mock.patch.object(ui_qt, "BoundedIPCServer", return_value=ipc) as ipc_type,
+        ):
+            exit_code = ui_qt.run_app([])
+
+        self.assertEqual(exit_code, 23)
+        self.assertEqual(create_mutex.call_count, 2)
+        window_type.assert_called_once_with(
+            startup_args=request.paths,
+            startup_auto_start=False,
+            startup_cleanup_policy=request.cleanup_policy,
+            startup_extract_to_source=True,
+            startup_context_menu=False,
+        )
+        ipc_type.assert_called_once_with(window)
+        ipc.start.assert_called_once_with()
+        window.show.assert_called_once_with()
+        window.activate_window.assert_called_once_with()
+        window._start_startup_processing.assert_called_once_with()
+        window._shutdown.assert_called_once_with(force=True)
+        close_mutex.assert_called_once_with(instance_mutex)
+
+    def test_wait_timeout_does_not_create_window_or_scheduler(self):
+        app = mock.Mock()
+        request = _launch_request()
+        stopping = _forward_result(
+            "rejected",
+            "server_stopping",
+            reached_existing=True,
+        )
+
+        with (
+            self._qapplication_patch(app),
+            mock.patch.object(ui_qt.sys, "platform", "win32"),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(ui_qt, "_forward_launch_request", return_value=stopping),
+            mock.patch.object(ui_qt, "create_mutex", return_value=None) as create_mutex,
+            mock.patch.object(ui_qt, "INSTANCE_STARTUP_WAIT_SECONDS", 0.0),
+            mock.patch.object(ui_qt.time, "monotonic", return_value=100.0),
+            mock.patch.object(ui_qt.time, "sleep") as sleep,
+            mock.patch.object(ui_qt.QMessageBox, "critical") as critical,
+            mock.patch.object(ui_qt, "Scheduler") as scheduler_type,
+            mock.patch.object(ui_qt, "Smart7zQtWindow") as window_type,
+        ):
+            exit_code = ui_qt.run_app([])
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(create_mutex.call_count, 2)
+        sleep.assert_not_called()
+        critical.assert_called_once()
+        scheduler_type.assert_not_called()
+        window_type.assert_not_called()
+        app.exec.assert_not_called()
+
+    def test_ipc_bind_failure_retries_forwarding_before_exiting(self):
+        app = mock.Mock()
+        request = _launch_request()
+        unavailable = _forward_result("unavailable", "state_unavailable")
+        accepted = _forward_result("accepted", reached_existing=True)
+        instance_mutex = object()
+        window = _run_app_window()
+        ipc = mock.Mock()
+        ipc.start.return_value = False
+
+        with (
+            self._qapplication_patch(app),
+            mock.patch.object(ui_qt.sys, "platform", "win32"),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(
+                ui_qt,
+                "_forward_launch_request",
+                side_effect=[unavailable, accepted],
+            ) as forward,
+            mock.patch.object(ui_qt, "create_mutex", return_value=instance_mutex),
+            mock.patch.object(ui_qt, "close_mutex") as close_mutex,
+            mock.patch.object(ui_qt.QMessageBox, "critical") as critical,
+            mock.patch.object(ui_qt, "Smart7zQtWindow", return_value=window),
+            mock.patch.object(ui_qt, "BoundedIPCServer", return_value=ipc),
+        ):
+            exit_code = ui_qt.run_app([])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(forward.call_count, 2)
+        ipc.start.assert_called_once_with()
+        self.assertEqual(window._shutdown.call_count, 2)
+        window._start_startup_processing.assert_not_called()
+        critical.assert_not_called()
+        app.exec.assert_not_called()
+        close_mutex.assert_called_once_with(instance_mutex)
+
+    def test_ipc_bind_failure_shuts_down_before_forward_error_dialog(self):
+        app = mock.Mock()
+        request = _launch_request()
+        unavailable = _forward_result("unavailable", "state_unavailable")
+        rejected = _forward_result(
+            "rejected",
+            "bind_conflict",
+            reached_existing=True,
+        )
+        window = _run_app_window()
+        ipc = mock.Mock()
+        ipc.start.return_value = False
+        observed = []
+
+        def forward_exit_code(result, _parent, **_kwargs):
+            if result.reason == "bind_conflict":
+                self.assertEqual(window._shutdown.call_count, 1)
+                observed.append("forward_error")
+                return 1
+            return None
+
+        with (
+            self._qapplication_patch(app),
+            mock.patch.object(ui_qt.sys, "platform", "win32"),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(
+                ui_qt,
+                "_forward_launch_request",
+                side_effect=[unavailable, rejected],
+            ),
+            mock.patch.object(ui_qt, "_qt_forward_exit_code", side_effect=forward_exit_code),
+            mock.patch.object(ui_qt, "create_mutex", return_value=object()),
+            mock.patch.object(ui_qt, "close_mutex", return_value=True) as close_mutex,
+            mock.patch.object(ui_qt, "Smart7zQtWindow", return_value=window),
+            mock.patch.object(ui_qt, "BoundedIPCServer", return_value=ipc),
+        ):
+            exit_code = ui_qt.run_app([])
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(observed, ["forward_error"])
+        window._start_startup_processing.assert_not_called()
+        self.assertEqual(window._shutdown.call_count, 2)
+        close_mutex.assert_called_once()
+
+    def test_mutex_is_released_when_startup_or_shutdown_stages_raise(self):
+        unavailable = _forward_result("unavailable", "state_unavailable")
+
+        for failing_stage in ("window", "ipc_start", "app_exec", "shutdown"):
+            with self.subTest(failing_stage=failing_stage):
+                app = mock.Mock()
+                request = _launch_request()
+                instance_mutex = object()
+                window = _run_app_window()
+                window_type = mock.Mock(return_value=window)
+                ipc = mock.Mock()
+                ipc.start.return_value = True
+
+                if failing_stage == "window":
+                    window_type.side_effect = RuntimeError("window failed")
+                elif failing_stage == "ipc_start":
+                    ipc.start.side_effect = RuntimeError("ipc start failed")
+                elif failing_stage == "app_exec":
+                    app.exec.side_effect = RuntimeError("app exec failed")
+                else:
+                    window._shutdown.side_effect = RuntimeError("shutdown failed")
+
+                with (
+                    self._qapplication_patch(app),
+                    mock.patch.object(ui_qt.sys, "platform", "win32"),
+                    mock.patch.object(ui_qt, "_configure_qt_application"),
+                    mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+                    mock.patch.object(
+                        ui_qt,
+                        "_forward_launch_request",
+                        return_value=unavailable,
+                    ),
+                    mock.patch.object(ui_qt, "create_mutex", return_value=instance_mutex),
+                    mock.patch.object(ui_qt, "close_mutex") as close_mutex,
+                    mock.patch.object(ui_qt, "Smart7zQtWindow", window_type),
+                    mock.patch.object(ui_qt, "BoundedIPCServer", return_value=ipc),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "failed"):
+                        ui_qt.run_app([])
+
+                if failing_stage == "shutdown":
+                    close_mutex.assert_not_called()
+                else:
+                    close_mutex.assert_called_once_with(instance_mutex)
+                if failing_stage == "window":
+                    window._shutdown.assert_not_called()
+                else:
+                    window._shutdown.assert_called_once_with(force=True)
+
+
+>>>>>>> origin/main
 @unittest.skipIf(QApplication is None, "PySide6 is not installed")
 class TestQtUiLifecycle(unittest.TestCase):
     @classmethod
@@ -111,6 +443,57 @@ class TestQtUiLifecycle(unittest.TestCase):
                 window.deleteLater()
                 self.qt_app.processEvents()
 
+<<<<<<< HEAD
+=======
+    def test_bind_failure_event_pump_cannot_process_startup_args(self):
+        request = _launch_request()
+        unavailable = _forward_result("unavailable", "state_unavailable")
+        rejected = _forward_result(
+            "rejected",
+            "bind_conflict",
+            reached_existing=True,
+        )
+        config = dict(DEFAULT_CONFIG)
+        config["temp_dir"] = tempfile.gettempdir()
+        ipc = mock.Mock()
+        ipc.start.return_value = False
+
+        def forward_exit_code(result, _parent, **_kwargs):
+            if result.reason == "bind_conflict":
+                QTest.qWait(150)
+                return 1
+            return None
+
+        with (
+            mock.patch.object(ui_qt.sys, "platform", "win32"),
+            mock.patch.object(ui_qt, "_configure_qt_application"),
+            mock.patch.object(ui_qt, "parse_launch_args", return_value=request),
+            mock.patch.object(
+                ui_qt,
+                "_forward_launch_request",
+                side_effect=[unavailable, rejected],
+            ),
+            mock.patch.object(ui_qt, "_qt_forward_exit_code", side_effect=forward_exit_code),
+            mock.patch.object(ui_qt, "create_mutex", return_value=object()),
+            mock.patch.object(ui_qt, "close_mutex", return_value=True),
+            mock.patch.object(ui_qt, "load_config", return_value=config),
+            mock.patch.object(ui_qt, "find_sevenzip", return_value=r"C:\7z.exe"),
+            mock.patch.object(ui_qt, "Scheduler", _FakeScheduler),
+            mock.patch.object(ui_qt, "cleanup_stale_sessions", return_value=[]),
+            mock.patch.object(ui_qt, "BoundedIPCServer", return_value=ipc),
+            mock.patch.object(
+                ui_qt.Smart7zQtWindow,
+                "_process_external_paths",
+                autospec=True,
+                return_value=True,
+            ) as process_paths,
+        ):
+            exit_code = ui_qt.run_app([])
+
+        self.assertEqual(exit_code, 1)
+        process_paths.assert_not_called()
+
+>>>>>>> origin/main
     def test_compact_inspector_replaces_large_phase_track(self):
         with self.make_window() as window:
             window.resize(920, 640)
@@ -121,6 +504,7 @@ class TestQtUiLifecycle(unittest.TestCase):
             self.assertEqual(window.detail_phase.text(), "阶段 · -")
             self.assertLessEqual(window.workspace_splitter.sizes()[1], 145)
 
+<<<<<<< HEAD
     def test_menu_bar_actions_are_not_clipped(self):
         with self.make_window() as window:
             window.resize(920, 640)
@@ -257,6 +641,8 @@ class TestQtUiLifecycle(unittest.TestCase):
             self.assertEqual(event.acceptProposedAction.call_count, 2)
             self.assertFalse(window.drop_overlay.isVisible())
 
+=======
+>>>>>>> origin/main
     def test_phase_summary_preserves_progress_without_a_track(self):
         self.assertEqual(ui_qt.phase_summary(JobState.QUEUED), "阶段 0/5 · 等待开始")
         self.assertEqual(ui_qt.phase_summary(JobState.EXTRACTING), "阶段 3/5 · 解压")
@@ -278,6 +664,7 @@ class TestQtUiLifecycle(unittest.TestCase):
             self.assertTrue(window.activate_window())
             self.assertFalse(window._context_auto_close_armed)
 
+<<<<<<< HEAD
     def test_initial_context_presentation_keeps_auto_close_armed(self):
         with self.make_window(
             startup_args=[r"C:\incoming\sample.zip"],
@@ -351,6 +738,8 @@ class TestQtUiLifecycle(unittest.TestCase):
                 window.activity_stack.currentWidget(), window.scan_activity_page
             )
 
+=======
+>>>>>>> origin/main
     def test_completed_context_window_closes_only_when_still_armed(self):
         with tempfile.TemporaryDirectory() as temp, self.make_window() as window:
             archive = Path(temp) / "done.zip"
@@ -398,10 +787,90 @@ class TestQtUiLifecycle(unittest.TestCase):
                     [button.text() for button in dialog.findChildren(ui_qt.QPushButton, "browseButton")],
                     ["浏览…", "浏览…"],
                 )
+<<<<<<< HEAD
+=======
+                self.assertEqual(dialog.depth_spin.objectName(), "depthSpin")
+                stylesheet = self.qt_app.styleSheet()
+                self.assertRegex(
+                    stylesheet,
+                    re.compile(
+                        r"(?s)QLineEdit\s*,\s*QComboBox\s*,\s*QSpinBox\s*"
+                        r"\{[^}]*selection-background-color\s*:\s*#d7efeb\s*;"
+                        r"[^}]*selection-color\s*:\s*#1f1f1f\s*;"
+                    ),
+                )
+                self.assertRegex(
+                    stylesheet,
+                    re.compile(
+                        r"(?s)QSpinBox#depthSpin\s*\{[^}]*"
+                        r"padding-right\s*:\s*21px\s*;"
+                    ),
+                )
+                self.assertRegex(
+                    stylesheet,
+                    re.compile(
+                        r"(?s)QSpinBox#depthSpin::up-button\s*,\s*"
+                        r"QSpinBox#depthSpin::down-button\s*\{[^}]*"
+                        r"width\s*:\s*18px\s*;[^}]*"
+                        r"border-left\s*:\s*1px solid #cfd8d5\s*;[^}]*"
+                        r"background\s*:\s*#f5f7f7\s*;"
+                    ),
+                )
+                self.assertRegex(
+                    stylesheet,
+                    re.compile(
+                        r"QSpinBox#depthSpin::up-button\s*\{[^}]*"
+                        r"border-bottom\s*:\s*1px solid #dfe5e3\s*;"
+                    ),
+                )
+>>>>>>> origin/main
             finally:
                 dialog.close()
                 dialog.deleteLater()
 
+<<<<<<< HEAD
+=======
+    def test_startup_args_are_processed_only_after_explicit_activation(self):
+        with self.make_window(startup_args=[r"C:\incoming\sample.zip"]) as window:
+            with mock.patch.object(
+                window, "_process_external_paths", return_value=True
+            ) as process:
+                QTest.qWait(130)
+                process.assert_not_called()
+
+                self.assertTrue(window._start_startup_processing())
+                QTest.qWait(130)
+                process.assert_called_once_with(
+                    [r"C:\incoming\sample.zip"],
+                    auto_start=True,
+                    source="CLI",
+                    cleanup_policy="keep",
+                    extract_to_source=False,
+                    context_menu=False,
+                )
+
+                process.reset_mock()
+                window._startup_args_processed = False
+                window._closing = True
+                window._process_startup_args()
+                process.assert_not_called()
+
+    def test_zero_nested_depth_survives_settings_and_config_sync(self):
+        with self.make_window() as window:
+            window.config["max_nested_depth"] = 0
+            dialog = ui_qt.SettingsDialog(window.config, window)
+            try:
+                self.assertEqual(dialog.depth_spin.value(), 0)
+                self.assertEqual(dialog.values()["max_nested_depth"], 0)
+            finally:
+                dialog.close()
+                dialog.deleteLater()
+
+            with mock.patch.object(ui_qt, "save_config") as save:
+                self.assertTrue(window._sync_config(silent=True))
+                self.assertEqual(save.call_args.args[0]["max_nested_depth"], 0)
+
+>>>>>>> origin/main
     def test_settings_path_picker_updates_temp_directory(self):
         with self.make_window() as window:
             dialog = ui_qt.SettingsDialog(window.config, window)
@@ -422,7 +891,11 @@ class TestQtUiLifecycle(unittest.TestCase):
             buttons = window.queue_panel.findChildren(ui_qt.QPushButton, "queueActionButton")
             self.assertEqual(
                 [button.text() for button in buttons],
+<<<<<<< HEAD
                 ["取消当前", "取消选中", "清除已完成", "取消所有待处理", "隐藏详情"],
+=======
+                ["终止当前任务", "取消选中", "清除已完成", "取消所有待处理", "隐藏详情"],
+>>>>>>> origin/main
             )
             self.assertFalse(window.cancel_current_button.isEnabled())
             self.assertFalse(window.cancel_selected_button.isEnabled())
@@ -450,6 +923,22 @@ class TestQtUiLifecycle(unittest.TestCase):
             self.assertEqual(window.scheduler.cancel_current_calls, 0)
             self.assertIn(completed.task_id, window.jobs)
 
+<<<<<<< HEAD
+=======
+    def test_terminate_current_task_button_cancels_running_job(self):
+        with tempfile.TemporaryDirectory() as temp, self.make_window() as window:
+            current = Job(path=str(Path(temp) / "current.zip"))
+            current.state = JobState.EXTRACTING
+            window.jobs[current.task_id] = current
+            window.job_model.upsert(current)
+            window.scheduler.current_job = current
+            window._update_summary()
+
+            self.assertTrue(window.cancel_current_button.isEnabled())
+            window.cancel_current_button.click()
+            self.assertEqual(window.scheduler.cancel_current_calls, 1)
+
+>>>>>>> origin/main
     def test_processing_button_returns_to_start_for_terminal_outcomes(self):
         for state in (JobState.COMPLETE, JobState.FAILED, JobState.INTERRUPTED):
             with self.subTest(state=state), tempfile.TemporaryDirectory() as temp, self.make_window() as window:

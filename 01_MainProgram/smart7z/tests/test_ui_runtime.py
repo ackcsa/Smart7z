@@ -13,12 +13,16 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+<<<<<<< HEAD
 import launch_ipc
+=======
+>>>>>>> origin/main
 import runtime_ipc
 import windows_adapters
 
 
 class TestIpcLifecycle(unittest.TestCase):
+<<<<<<< HEAD
     def test_absent_instance_mutex_skips_stale_state_and_socket_probe(self):
         with (
             mock.patch.object(launch_ipc, "_instance_mutex_exists", return_value=False),
@@ -47,6 +51,8 @@ class TestIpcLifecycle(unittest.TestCase):
 
             self.assertIsNone(launch_ipc._read_ipc_state(str(state_path)))
 
+=======
+>>>>>>> origin/main
     def test_round_trip_ack_and_listener_shutdown(self):
         received = []
         delivered = threading.Event()
@@ -434,17 +440,24 @@ class TestWindowsAdapterLifecycle(unittest.TestCase):
 
     def test_context_menu_quotes_frozen_target(self):
         executable = r"C:\Program Files\Smart7z\smart7z.exe"
+<<<<<<< HEAD
         launcher = r"C:\Program Files\Smart7z\Smart7zShell.exe"
         with (
             mock.patch.object(windows_adapters.sys, "executable", executable),
             mock.patch.object(windows_adapters.sys, "frozen", True, create=True),
             mock.patch.object(windows_adapters.os.path, "isfile", return_value=True),
+=======
+        with (
+            mock.patch.object(windows_adapters.sys, "executable", executable),
+            mock.patch.object(windows_adapters.sys, "frozen", True, create=True),
+>>>>>>> origin/main
         ):
             command = windows_adapters.build_context_menu_command("permanent")
         self.assertEqual(
             command,
             subprocess.list2cmdline(
                 [
+<<<<<<< HEAD
                     launcher,
                     "--context-menu",
                     "--start",
@@ -467,11 +480,17 @@ class TestWindowsAdapterLifecycle(unittest.TestCase):
             command,
             subprocess.list2cmdline(
                 [
+=======
+>>>>>>> origin/main
                     executable,
                     "--context-menu",
                     "--start",
                     "--extract-here",
+<<<<<<< HEAD
                     "--keep-source",
+=======
+                    "--delete-source",
+>>>>>>> origin/main
                 ]
             )
             + ' "%1"',
@@ -535,7 +554,10 @@ class TestWindowsAdapterLifecycle(unittest.TestCase):
             mock.patch.object(windows_adapters.sys, "platform", "win32"),
             mock.patch.object(windows_adapters.sys, "executable", executable),
             mock.patch.object(windows_adapters.sys, "frozen", True, create=True),
+<<<<<<< HEAD
             mock.patch.object(windows_adapters.os.path, "isfile", return_value=True),
+=======
+>>>>>>> origin/main
             mock.patch.dict(sys.modules, {"winreg": registry}),
         ):
             self.assertTrue(windows_adapters.register_context_menu())

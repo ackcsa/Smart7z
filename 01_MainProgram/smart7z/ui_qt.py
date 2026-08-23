@@ -42,9 +42,17 @@ from PySide6.QtGui import (
     QPainter,
     QPalette,
     QPixmap,
+<<<<<<< HEAD
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+=======
+    QPolygonF,
+)
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QAbstractSpinBox,
+>>>>>>> origin/main
     QApplication,
     QButtonGroup,
     QCheckBox,
@@ -72,6 +80,10 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStyle,
     QStyleFactory,
+<<<<<<< HEAD
+=======
+    QStyleOptionSpinBox,
+>>>>>>> origin/main
     QStyledItemDelegate,
     QTabWidget,
     QTableView,
@@ -94,6 +106,10 @@ from runtime_ipc import (
     EXTERNAL_CLEANUP_POLICIES,
     INSTANCE_STARTUP_POLL_SECONDS,
     INSTANCE_STARTUP_WAIT_SECONDS,
+<<<<<<< HEAD
+=======
+    IPC_FORWARD_REJECTED,
+>>>>>>> origin/main
     PROCESSING_STATES,
     SCAN_MODE_DEEP,
     SCAN_MODE_NORMAL,
@@ -115,6 +131,7 @@ from windows_adapters import (
 logger = logging.getLogger(__name__)
 
 APP_TITLE = "Smart 7z Ultra"
+<<<<<<< HEAD
 APP_VERSION = "1.0.2"
 
 _ICON_FONT_FAMILY: Optional[str] = None
@@ -153,6 +170,9 @@ def _startup_trace(message: str) -> None:
             stream.write(f"{time.monotonic():.6f} {message[:800]}\n")
     except OSError:
         return
+=======
+APP_VERSION = "1.0.0"
+>>>>>>> origin/main
 
 COLOR_ACCENT = QColor("#00796B")
 COLOR_ACCENT_HOVER = QColor("#00695F")
@@ -169,6 +189,33 @@ COLOR_ROW_ALTERNATE = QColor("#F7FAF9")
 COLOR_ROW_HOVER = QColor("#EEF4F2")
 COLOR_ROW_SELECTED = QColor("#E2F3F0")
 
+<<<<<<< HEAD
+=======
+MAX_RECOVERY_LOG_DETAILS = 8
+ARCHIVE_BLOCK_REASONS = frozenset(
+    {
+        "manifest_limit",
+        "output_file_quota",
+        "summary_manifest_blocked",
+        "output_byte_quota",
+        "nested_output_quota",
+        "no_output_capacity",
+    }
+)
+
+_RECOVERY_ROUTINE_PREFIXES = (
+    "Removed stale recovery record for an absent artifact",
+    "Deleted owned temporary artifact:",
+    "Restored source after interrupted cleanup:",
+    "Source cleanup recovery record resolved:",
+    "Source cleanup had already completed:",
+    "Removed stale recovery record for an absent session",
+    "Deleted stale owned session:",
+)
+
+_RECOVERY_ALWAYS_SHOW_PREFIXES = ("Source recovery conflict retained at:",)
+
+>>>>>>> origin/main
 TABLE_COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("task", "任务"),
     ("size", "大小"),
@@ -189,6 +236,7 @@ PHASE_STATES: Tuple[Tuple[str, frozenset], ...] = (
 
 
 def _icon_font(point_size: int) -> QFont:
+<<<<<<< HEAD
     global _ICON_FONT_FAMILY
 
     if _ICON_FONT_FAMILY is None:
@@ -200,6 +248,12 @@ def _icon_font(point_size: int) -> QFont:
             "Segoe Fluent Icons" if sys.platform == "win32" else "Segoe MDL2 Assets"
         )
     return QFont(_ICON_FONT_FAMILY, point_size)
+=======
+    font = QFont("Segoe Fluent Icons", point_size)
+    if not QFont("Segoe Fluent Icons").exactMatch():
+        font = QFont("Segoe MDL2 Assets", point_size)
+    return font
+>>>>>>> origin/main
 
 
 def fluent_icon(glyph: str, color: QColor = COLOR_TEXT, size: int = 18) -> QIcon:
@@ -218,6 +272,7 @@ def fluent_icon(glyph: str, color: QColor = COLOR_TEXT, size: int = 18) -> QIcon
 
 
 def app_icon() -> QIcon:
+<<<<<<< HEAD
     if getattr(sys, "frozen", False):
         candidates = (Path(get_app_dir()) / "smart7z.ico",)
     else:
@@ -225,6 +280,13 @@ def app_icon() -> QIcon:
             Path(get_app_dir()) / "build_assets" / "smart7z.ico",
             Path(__file__).resolve().parent / "build_assets" / "smart7z.ico",
         )
+=======
+    candidates = (
+        Path(get_app_dir()) / "build_assets" / "smart7z.ico",
+        Path(get_app_dir()) / "smart7z.ico",
+        Path(__file__).resolve().parent / "build_assets" / "smart7z.ico",
+    )
+>>>>>>> origin/main
     for candidate in candidates:
         if candidate.is_file():
             return QIcon(str(candidate))
@@ -581,6 +643,65 @@ class DropOverlay(QFrame):
         self.hide()
 
 
+<<<<<<< HEAD
+=======
+class SoftStepperSpinBox(QSpinBox):
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+
+        # QSS owns the quiet stepper backgrounds; draw compact arrows explicitly
+        # so they remain visible on Windows styles that suppress native arrows.
+        option = QStyleOptionSpinBox()
+        self.initStyleOption(option)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        controls = (
+            (
+                QStyle.SubControl.SC_SpinBoxUp,
+                QAbstractSpinBox.StepEnabledFlag.StepUpEnabled,
+                True,
+            ),
+            (
+                QStyle.SubControl.SC_SpinBoxDown,
+                QAbstractSpinBox.StepEnabledFlag.StepDownEnabled,
+                False,
+            ),
+        )
+        for control, enabled_flag, points_up in controls:
+            rect = self.style().subControlRect(
+                QStyle.ComplexControl.CC_SpinBox,
+                option,
+                control,
+                self,
+            )
+            painter.setBrush(
+                QColor(
+                    "#46514f"
+                    if self.isEnabled() and option.stepEnabled & enabled_flag
+                    else "#9da5a3"
+                )
+            )
+            center = rect.center()
+            half_width = 3.0
+            half_height = 1.75
+            if points_up:
+                points = (
+                    QPointF(center.x() - half_width, center.y() + half_height),
+                    QPointF(center.x(), center.y() - half_height),
+                    QPointF(center.x() + half_width, center.y() + half_height),
+                )
+            else:
+                points = (
+                    QPointF(center.x() - half_width, center.y() - half_height),
+                    QPointF(center.x(), center.y() + half_height),
+                    QPointF(center.x() + half_width, center.y() - half_height),
+                )
+            painter.drawPolygon(QPolygonF(points))
+
+
+>>>>>>> origin/main
 class SettingsDialog(QDialog):
     def __init__(self, config: dict, parent: QWidget):
         super().__init__(parent)
@@ -602,9 +723,13 @@ class SettingsDialog(QDialog):
         path_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         path_form.setHorizontalSpacing(12)
         path_form.setVerticalSpacing(10)
+<<<<<<< HEAD
         self.temp_edit = QLineEdit(
             str(config.get("temp_dir") or (Path(tempfile.gettempdir()) / "Smart7z"))
         )
+=======
+        self.temp_edit = QLineEdit(str(config.get("temp_dir", r"C:\Temp_Smart7z")))
+>>>>>>> origin/main
         self.password_file_edit = QLineEdit(str(config.get("password_file", "code.txt")))
         path_form.addRow("暂存目录", self._path_row(self.temp_edit, self._browse_temp))
         path_form.addRow("密码文件", self._path_row(self.password_file_edit, self._browse_password_file))
@@ -616,7 +741,11 @@ class SettingsDialog(QDialog):
         processing_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         processing_form.setHorizontalSpacing(12)
         processing_form.setVerticalSpacing(10)
+<<<<<<< HEAD
         self.depth_spin = QSpinBox()
+=======
+        self.depth_spin = SoftStepperSpinBox()
+>>>>>>> origin/main
         self.depth_spin.setObjectName("depthSpin")
         self.depth_spin.setRange(0, 20)
         self.depth_spin.setValue(int(config.get("max_nested_depth", 2)))
@@ -681,6 +810,7 @@ class Smart7zQtWindow(QMainWindow):
         startup_extract_to_source: bool = False,
         startup_context_menu: bool = False,
     ):
+<<<<<<< HEAD
         _startup_trace("window_init:start")
         super().__init__()
         _startup_trace("window_init:qmainwindow")
@@ -688,16 +818,26 @@ class Smart7zQtWindow(QMainWindow):
         _startup_trace("window_init:icon:start")
         self.setWindowIcon(app_icon())
         _startup_trace("window_init:icon:end")
+=======
+        super().__init__()
+        self.setWindowTitle(APP_TITLE)
+        self.setWindowIcon(app_icon())
+>>>>>>> origin/main
         self.resize(1100, 720)
         self.setMinimumSize(920, 640)
         self.setAcceptDrops(True)
         self._place_center()
         QTimer.singleShot(0, self._place_center)
 
+<<<<<<< HEAD
         _startup_trace("window_init:config:start")
         self.config = load_config()
         self.config["_app_dir"] = get_app_dir()
         _startup_trace("window_init:config:end")
+=======
+        self.config = load_config()
+        self.config["_app_dir"] = get_app_dir()
+>>>>>>> origin/main
         self.scheduler: Optional[Scheduler] = None
         self.ipc_server: Optional[BoundedIPCServer] = None
         self.startup_blocked = False
@@ -738,11 +878,14 @@ class Smart7zQtWindow(QMainWindow):
         self._current_stego_job: Optional[Job] = None
         self._inspector_expanded = True
         self._inspector_sizes = [500, 118]
+<<<<<<< HEAD
         self._root_layout: Optional[QVBoxLayout] = None
         self._activity_shelf_ready = False
         self._job_table_model_ready = False
         self._deferred_icons_ready = False
         self._deferred_icon_specs = []
+=======
+>>>>>>> origin/main
 
         self.bridge = QtDispatchBridge(self)
         self.bridge.scheduler_event.connect(self._handle_scheduler_event)
@@ -751,6 +894,7 @@ class Smart7zQtWindow(QMainWindow):
         self.bridge.scan_candidate.connect(self._accept_scan_candidate)
         self.bridge.scan_finished.connect(self._finish_scan)
 
+<<<<<<< HEAD
         _startup_trace("window_init:build_ui:start")
         self._build_ui()
         _startup_trace("window_init:build_ui:end")
@@ -759,6 +903,11 @@ class Smart7zQtWindow(QMainWindow):
         QTimer.singleShot(0, self._ensure_job_table_model)
         QTimer.singleShot(50, self._apply_deferred_icons)
         _startup_trace("window_init:end")
+=======
+        self._build_ui()
+        self._setup_scheduler()
+        self._update_summary()
+>>>>>>> origin/main
 
     def _build_ui(self) -> None:
         self._build_menus()
@@ -768,6 +917,7 @@ class Smart7zQtWindow(QMainWindow):
         root = QVBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+<<<<<<< HEAD
         self._root_layout = root
 
         root.addWidget(self._build_command_bar())
@@ -776,6 +926,12 @@ class Smart7zQtWindow(QMainWindow):
         # are only needed after a scan or an interactive prompt starts.
         self.activity_shelf = QFrame()
         self.activity_shelf.setObjectName("activityShelf")
+=======
+
+        root.addWidget(self._build_command_bar())
+        root.addWidget(self._build_option_strip())
+        self.activity_shelf = self._build_activity_shelf()
+>>>>>>> origin/main
         root.addWidget(self.activity_shelf)
         self.activity_shelf.hide()
 
@@ -796,6 +952,7 @@ class Smart7zQtWindow(QMainWindow):
         self.drop_overlay.raise_()
         self._build_status_bar()
 
+<<<<<<< HEAD
     def _ensure_activity_shelf(self) -> None:
         if self._activity_shelf_ready:
             return
@@ -815,6 +972,12 @@ class Smart7zQtWindow(QMainWindow):
     def _build_menus(self) -> None:
         menu_bar = self.menuBar()
         menu_bar.setNativeMenuBar(False)
+=======
+    def _build_menus(self) -> None:
+        menu_bar = self.menuBar()
+        menu_bar.setNativeMenuBar(False)
+        menu_bar.setFixedHeight(26)
+>>>>>>> origin/main
 
         context_menu = menu_bar.addMenu("右键菜单")
         add_context = context_menu.addAction("添加右键菜单")
@@ -880,7 +1043,11 @@ class Smart7zQtWindow(QMainWindow):
         layout.addWidget(self.target_edit, 1)
         browse_target = QToolButton()
         browse_target.setObjectName("compactIconButton")
+<<<<<<< HEAD
         self._set_deferred_icon(browse_target, "\ue838", COLOR_MUTED, 14)
+=======
+        browse_target.setIcon(fluent_icon("\ue838", COLOR_MUTED, 14))
+>>>>>>> origin/main
         browse_target.setIconSize(QSize(15, 15))
         browse_target.setFixedSize(28, 28)
         browse_target.setToolTip("浏览目标目录")
@@ -1091,7 +1258,11 @@ class Smart7zQtWindow(QMainWindow):
         toolbar_layout.addWidget(self.pending_count_label)
         toolbar_layout.addStretch(1)
         self.cancel_current_button = self._queue_action_button(
+<<<<<<< HEAD
             "取消当前", "中断正在运行的任务", self._cancel_current
+=======
+            "终止当前任务", "终止当前正在运行的任务", self._cancel_current
+>>>>>>> origin/main
         )
         self.cancel_selected_button = self._queue_action_button(
             "取消选中", "中断选中的未完成任务", self._cancel_selected
@@ -1116,11 +1287,17 @@ class Smart7zQtWindow(QMainWindow):
         layout.addWidget(toolbar)
 
         self.job_model = JobTableModel(self)
+<<<<<<< HEAD
         self.job_model.rowsInserted.connect(
             lambda *_args: self._ensure_job_table_model()
         )
         self.job_table = QTableView()
         self.job_table.setObjectName("jobTable")
+=======
+        self.job_table = QTableView()
+        self.job_table.setObjectName("jobTable")
+        self.job_table.setModel(self.job_model)
+>>>>>>> origin/main
         self.job_table.setItemDelegate(JobTableDelegate(self.job_table))
         self.job_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.job_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -1130,15 +1307,26 @@ class Smart7zQtWindow(QMainWindow):
         self.job_table.setShowGrid(False)
         self.job_table.setWordWrap(False)
         self.job_table.setSortingEnabled(True)
+<<<<<<< HEAD
+=======
+        self.job_table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
+>>>>>>> origin/main
         self.job_table.verticalHeader().setVisible(False)
         self.job_table.verticalHeader().setDefaultSectionSize(42)
         header = self.job_table.horizontalHeader()
         header.setMinimumHeight(36)
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+<<<<<<< HEAD
         for column, width in ((1, 70), (2, 86), (3, 116), (4, 72), (5, 82), (6, 122)):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
             self.job_table.setColumnWidth(column, width)
+=======
+        for column, width in ((1, 84), (2, 86), (3, 116), (4, 72), (5, 82), (6, 122)):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+            self.job_table.setColumnWidth(column, width)
+        self.job_table.selectionModel().selectionChanged.connect(self._selection_changed)
+>>>>>>> origin/main
         layout.addWidget(self.job_table, 1)
 
         summary = QFrame()
@@ -1175,6 +1363,7 @@ class Smart7zQtWindow(QMainWindow):
         layout.addWidget(summary)
         return panel
 
+<<<<<<< HEAD
     def _ensure_job_table_model(self) -> None:
         if self._job_table_model_ready:
             return
@@ -1216,6 +1405,8 @@ class Smart7zQtWindow(QMainWindow):
             except RuntimeError:
                 continue
 
+=======
+>>>>>>> origin/main
     def _build_inspector(self) -> QWidget:
         panel = QWidget()
         panel.setObjectName("inspectorPanel")
@@ -1223,6 +1414,10 @@ class Smart7zQtWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         self.inspector_tabs = QTabWidget()
         self.inspector_tabs.setDocumentMode(True)
+<<<<<<< HEAD
+=======
+        self.inspector_tabs.tabBar().setObjectName("inspectorTabBar")
+>>>>>>> origin/main
         layout.addWidget(self.inspector_tabs)
 
         details_page = QWidget()
@@ -1311,12 +1506,16 @@ class Smart7zQtWindow(QMainWindow):
 
     def _command_button(self, text: str, glyph: str, callback, *, primary=False, subtle=False) -> QPushButton:
         button = QPushButton(text)
+<<<<<<< HEAD
         self._set_deferred_icon(
             button,
             glyph,
             QColor("#FFFFFF") if primary else COLOR_TEXT,
             14,
         )
+=======
+        button.setIcon(fluent_icon(glyph, QColor("#FFFFFF") if primary else COLOR_TEXT, 14))
+>>>>>>> origin/main
         button.setIconSize(QSize(16, 16))
         if primary:
             button.setObjectName("primaryButton")
@@ -1469,17 +1668,23 @@ class Smart7zQtWindow(QMainWindow):
             self._sync_config(silent=True)
 
     def _setup_scheduler(self) -> None:
+<<<<<<< HEAD
         _startup_trace("setup_scheduler:start")
         self._prepare_temp_dir()
         sevenzip = find_sevenzip(self.config)
         _startup_trace(f"setup_scheduler:sevenzip:{sevenzip!r}")
         if not sevenzip:
             _startup_trace("setup_scheduler:no_7z")
+=======
+        sevenzip = find_sevenzip(self.config)
+        if not sevenzip:
+>>>>>>> origin/main
             QMessageBox.critical(self, "配置错误", "找不到 7z.exe。请安装 7-Zip 或将 7z.exe 放在程序目录后重启。")
             self.startup_blocked = True
             return
         self.config["7z_path"] = sevenzip
         try:
+<<<<<<< HEAD
             _startup_trace("setup_scheduler:construct")
             self.scheduler = Scheduler(sevenzip, self.config, event_cb=self._scheduler_callback)
             _startup_trace("setup_scheduler:constructed")
@@ -1487,6 +1692,12 @@ class Smart7zQtWindow(QMainWindow):
             _startup_trace(f"setup_scheduler:ready:{sevenzip}")
             self._log_recovery_messages(self.scheduler.recovery_messages)
             self.log_event("APP_READY")
+=======
+            self.scheduler = Scheduler(sevenzip, self.config, event_cb=self._scheduler_callback)
+            self.scheduler.start()
+            self._log_recovery_messages(self.scheduler.recovery_messages)
+            self._log_event("APP_READY")
+>>>>>>> origin/main
         except OSError as exc:
             self.scheduler = None
             self.startup_blocked = True
@@ -1498,6 +1709,7 @@ class Smart7zQtWindow(QMainWindow):
             daemon=True,
         ).start()
 
+<<<<<<< HEAD
     def _prepare_temp_dir(self) -> None:
         """Keep legacy default paths usable when their ACLs are restrictive."""
 
@@ -1522,6 +1734,10 @@ class Smart7zQtWindow(QMainWindow):
         except (OSError, TypeError, ValueError):
             logger.warning("Could not persist writable temp directory fallback", exc_info=True)
         self._append_log_line(f"暂存目录不可写，已改用用户临时目录：{fallback}")
+=======
+    def _log_event(self, code: str, **values) -> None:
+        self._append_log_line(format_user_message(code, **values))
+>>>>>>> origin/main
 
     def _log_recovery_messages(self, messages) -> None:
         routine_count = 0
@@ -1541,6 +1757,7 @@ class Smart7zQtWindow(QMainWindow):
         if always_show or review_messages:
             self._disable_context_auto_close(abnormal=True)
         if routine_count:
+<<<<<<< HEAD
             self.log_event("RECOVERY_AUTO_RESOLVED", count=routine_count)
         for message in always_show + review_messages:
             logger.warning("Startup recovery needs review: %s", message)
@@ -1553,6 +1770,20 @@ class Smart7zQtWindow(QMainWindow):
                 journal = getattr(self.scheduler, "recovery_journal", None)
                 journal_path = str(getattr(journal, "path", "") or "")
             self.log_event("RECOVERY_MORE", count=omitted, detail=journal_path)
+=======
+            self._log_event("RECOVERY_AUTO_RESOLVED", count=routine_count)
+
+        for message in always_show + review_messages:
+            logger.warning("Startup recovery needs review: %s", message)
+        for message in always_show + review_messages[:MAX_RECOVERY_LOG_DETAILS]:
+            self._log_event("RECOVERY_REVIEW", detail=message)
+
+        omitted = len(review_messages) - MAX_RECOVERY_LOG_DETAILS
+        if omitted > 0:
+            journal = getattr(self.scheduler, "recovery_journal", None)
+            journal_path = str(getattr(journal, "path", "") or "")
+            self._log_event("RECOVERY_MORE", count=omitted, detail=journal_path)
+>>>>>>> origin/main
 
     def _scheduler_callback(self, event_type, job, *args, **kwargs) -> None:
         if self._closing:
@@ -1584,9 +1815,13 @@ class Smart7zQtWindow(QMainWindow):
         ):
             return False
         self._startup_processing_scheduled = True
+<<<<<<< HEAD
         # Defer until the event loop turns once so the already-built window
         # can paint, without adding a fixed right-click latency.
         QTimer.singleShot(0, self._process_startup_args)
+=======
+        QTimer.singleShot(100, self._process_startup_args)
+>>>>>>> origin/main
         return True
 
     def _process_startup_args(self) -> None:
@@ -1599,7 +1834,10 @@ class Smart7zQtWindow(QMainWindow):
         ):
             return
         self._startup_args_processed = True
+<<<<<<< HEAD
         _startup_trace(f"startup_args:{self.startup_args!r}")
+=======
+>>>>>>> origin/main
         if self.startup_args:
             self._process_external_paths(
                 self.startup_args,
@@ -1640,9 +1878,14 @@ class Smart7zQtWindow(QMainWindow):
             context_menu=context_menu,
         )
 
+<<<<<<< HEAD
     def activate_window(self, *, disarm_context_auto_close: bool = True) -> bool:
         if disarm_context_auto_close:
             self._disable_context_auto_close()
+=======
+    def activate_window(self) -> bool:
+        self._disable_context_auto_close()
+>>>>>>> origin/main
         if self._closing:
             return False
         screen = QApplication.primaryScreen()
@@ -1674,25 +1917,43 @@ class Smart7zQtWindow(QMainWindow):
         extract_to_source: bool = False,
         context_menu: bool = False,
     ) -> bool:
+<<<<<<< HEAD
         _startup_trace(f"external_paths:{list(paths)!r}:auto={auto_start}:source={source}")
+=======
+        path_values = tuple(paths or ())
+>>>>>>> origin/main
         config_snapshot = dict(self.config)
         config_snapshot["cleanup_policy"] = cleanup_policy
         config_snapshot["del_archive"] = cleanup_policy == CleanupPolicy.PERMANENT.value
         config_snapshot["_extract_to_source_override"] = bool(extract_to_source)
         accepted = False
+<<<<<<< HEAD
         for raw_path in paths:
+=======
+        file_count = 0
+        directory_count = 0
+        for raw_path in path_values:
+>>>>>>> origin/main
             if not isinstance(raw_path, str):
                 continue
             path = os.path.normpath(raw_path)
             if os.path.isdir(path):
+<<<<<<< HEAD
                 accepted = self._start_scan([path], auto_start=auto_start, config_snapshot=config_snapshot) or accepted
             elif os.path.isfile(path):
+=======
+                directory_count += 1
+                accepted = self._start_scan([path], auto_start=auto_start, config_snapshot=config_snapshot) or accepted
+            elif os.path.isfile(path):
+                file_count += 1
+>>>>>>> origin/main
                 accepted = self._enqueue_path(
                     path,
                     auto_start=auto_start,
                     explicit_input=True,
                     config_snapshot=config_snapshot,
                 ) or accepted
+<<<<<<< HEAD
         if accepted:
             _startup_trace("external_paths:accepted")
             file_count = sum(
@@ -1702,10 +1963,15 @@ class Smart7zQtWindow(QMainWindow):
                 1 for p in paths if isinstance(p, str) and os.path.isdir(p)
             )
             self.log_event(
+=======
+        if file_count or directory_count:
+            self._log_event(
+>>>>>>> origin/main
                 "EXTERNAL_PATHS_RECEIVED",
                 context=source,
                 file_count=file_count,
                 directory_count=directory_count,
+<<<<<<< HEAD
                 mode_zh="已自动开始" if auto_start else "等待手动开始",
                 mode_en="started automatically" if auto_start else "waiting for manual start",
             )
@@ -1713,6 +1979,14 @@ class Smart7zQtWindow(QMainWindow):
                 self._note_context_menu_request()
         elif context_menu:
             _startup_trace("external_paths:rejected_context")
+=======
+                mode_zh="自动开始" if auto_start else "等待手动开始",
+                mode_en="auto-start" if auto_start else "manual start",
+            )
+        if accepted and context_menu:
+            self._note_context_menu_request()
+        elif context_menu:
+>>>>>>> origin/main
             self._disable_context_auto_close(abnormal=True)
         return accepted
 
@@ -1729,6 +2003,7 @@ class Smart7zQtWindow(QMainWindow):
                 progress = args[2] if len(args) > 2 else getattr(job, "progress", 0)
                 if isinstance(progress, (int, float)) and progress >= 0:
                     job.progress = max(0, min(100, int(progress)))
+<<<<<<< HEAD
                 if state == JobState.FAILED:
                     context = Path(job.display_path).name
                     if (
@@ -1743,11 +2018,26 @@ class Smart7zQtWindow(QMainWindow):
                     else:
                         category = getattr(job.error_category, "name", None)
                         self.log_event(
+=======
+                context = Path(job.display_path).name
+                if state == JobState.FAILED:
+                    reason = str(getattr(job, "source_retention_reason", "") or "")
+                    if reason in ARCHIVE_BLOCK_REASONS or reason.startswith("unsafe_"):
+                        self._log_event(
+                            "ARCHIVE_BLOCKED",
+                            context=context,
+                            detail=job.error_message,
+                        )
+                    else:
+                        category = getattr(job.error_category, "name", None)
+                        self._log_event(
+>>>>>>> origin/main
                             "JOB_FAILED",
                             context=context,
                             category=category or "UNCLASSIFIED",
                         )
                 elif state == JobState.PARTIAL_RECOVERY:
+<<<<<<< HEAD
                     self.log_event("JOB_PARTIAL_RECOVERY", context=Path(job.display_path).name)
                 elif state == JobState.INTERRUPTED:
                     self.log_event("JOB_INTERRUPTED", context=Path(job.display_path).name)
@@ -1762,6 +2052,27 @@ class Smart7zQtWindow(QMainWindow):
                     self.log_event("USER_NOTICE", context=context, detail=message)
             if event_type == "password_promoted":
                 self.log_event("PASSWORD_PROMOTED")
+=======
+                    self._log_event("JOB_PARTIAL_RECOVERY", context=context)
+                elif state == JobState.INTERRUPTED:
+                    self._log_event("JOB_INTERRUPTED", context=context)
+                elif state == JobState.PASSWORD_REQUIRED:
+                    self._log_event("JOB_PASSWORD_REQUIRED", context=context)
+            if event_type == "user_notice" and args:
+                message = str(args[0] or "")
+                if message:
+                    context = Path(job.display_path).name
+                    if user_message_code(message) in CLEANUP_NOTICE_CODES:
+                        self._append_log_line(f"{context}: {message}")
+                    else:
+                        self._log_event(
+                            "USER_NOTICE",
+                            context=context,
+                            detail=message,
+                        )
+            if event_type == "password_promoted":
+                self._log_event("PASSWORD_PROMOTED")
+>>>>>>> origin/main
         elif event_type == "password_required":
             self._upsert_job(job)
             self._queue_password_prompt(job)
@@ -1779,6 +2090,7 @@ class Smart7zQtWindow(QMainWindow):
         }:
             self._upsert_job(job)
             self._dismiss_prompts_for_job(job)
+<<<<<<< HEAD
             if event_type == "job_complete":
                 self._append_log_line(f"{Path(job.display_path).name}: 已完成")
             elif event_type == "job_partial":
@@ -1797,13 +2109,30 @@ class Smart7zQtWindow(QMainWindow):
                 QTimer.singleShot(80, lambda task_id=job.task_id: self._remove_finished_ids({task_id}))
         elif event_type == "intake_full":
             self.log_event("INTAKE_FULL", context=Path(job.display_path).name)
+=======
+            if event_type == "job_partial":
+                self._disable_context_auto_close(abnormal=True)
+            elif event_type == "job_failed":
+                self._disable_context_auto_close(abnormal=True)
+            elif event_type == "job_interrupted":
+                self._disable_context_auto_close(abnormal=True)
+            elif event_type == "job_skipped":
+                self._disable_context_auto_close(abnormal=True)
+            if job.task_id in self._clear_after_terminal:
+                QTimer.singleShot(80, lambda task_id=job.task_id: self._remove_finished_ids({task_id}))
+        elif event_type == "intake_full":
+            self._log_event("INTAKE_FULL", context=Path(job.display_path).name)
+>>>>>>> origin/main
         elif event_type == "job_deferred":
             self._append_log_line(f"{Path(job.display_path).name}: 已暂存，等待扫描完成")
         self._update_summary()
         self._schedule_context_auto_close_check()
 
     def _upsert_job(self, job: Job) -> None:
+<<<<<<< HEAD
         self._ensure_job_table_model()
+=======
+>>>>>>> origin/main
         self.jobs[job.task_id] = job
         self.job_model.upsert(job)
         self._update_summary()
@@ -1814,14 +2143,20 @@ class Smart7zQtWindow(QMainWindow):
             self._update_details(job)
 
     def _selected_job(self) -> Optional[Job]:
+<<<<<<< HEAD
         self._ensure_job_table_model()
+=======
+>>>>>>> origin/main
         selection = self.job_table.selectionModel().selectedRows()
         if not selection:
             return None
         return self.job_model.job_at(selection[0].row())
 
     def _selected_jobs(self) -> List[Job]:
+<<<<<<< HEAD
         self._ensure_job_table_model()
+=======
+>>>>>>> origin/main
         return [
             job
             for index in self.job_table.selectionModel().selectedRows()
@@ -1835,15 +2170,31 @@ class Smart7zQtWindow(QMainWindow):
     def _update_details(self, job: Optional[Job]) -> None:
         if job is None:
             self.detail_title.setText("未选择任务")
+<<<<<<< HEAD
             self.detail_path.setText("从任务队列中选择一项以查看详情")
+=======
+            self.detail_title.setToolTip("")
+            self.detail_path.setText("从任务队列中选择一项以查看详情")
+            self.detail_path.setToolTip("")
+>>>>>>> origin/main
             self.detail_state.setText("-")
             self.detail_state.setStyleSheet("")
             self.detail_phase.setText("阶段 · -")
             for value in self.detail_values.values():
                 value.setText("-")
+<<<<<<< HEAD
             return
         self.detail_title.setText(Path(job.display_path).name)
         self.detail_path.setText(job.display_path)
+=======
+                value.setToolTip("")
+            return
+        display_path = job.display_path
+        self.detail_title.setText(Path(display_path).name)
+        self.detail_title.setToolTip(display_path)
+        self.detail_path.setText(display_path)
+        self.detail_path.setToolTip(display_path)
+>>>>>>> origin/main
         state_label = STATUS_DISPLAY.get(job.state, job.state.value)
         color = state_color(job.state).name()
         self.detail_state.setText(state_label)
@@ -1851,16 +2202,27 @@ class Smart7zQtWindow(QMainWindow):
         self.detail_phase.setText(phase_summary(job.state))
         manifest = getattr(job, "manifest", None)
         extraction = getattr(job, "extraction_result", None)
+<<<<<<< HEAD
         self.detail_values["id"].setText(job.task_id[:18])
         self.detail_values["format"].setText(getattr(manifest, "format", "-") or "-")
         entry_count = getattr(manifest, "entry_count", 0) if manifest is not None else 0
         if not entry_count and extraction is not None:
             entry_count = getattr(extraction, "output_file_count", 0) or 0
         self.detail_values["entries"].setText(str(entry_count) if entry_count else "-")
+=======
+        detail_text = {}
+        detail_text["id"] = job.task_id[:18]
+        detail_text["format"] = getattr(manifest, "format", "-") or "-"
+        entry_count = getattr(manifest, "entry_count", 0) if manifest is not None else 0
+        if not entry_count and extraction is not None:
+            entry_count = getattr(extraction, "output_file_count", 0) or 0
+        detail_text["entries"] = str(entry_count) if entry_count else "-"
+>>>>>>> origin/main
         if manifest is None:
             encrypted = "-"
         else:
             encrypted = "是" if bool(getattr(manifest, "is_encrypted", False)) else "否"
+<<<<<<< HEAD
         self.detail_values["encrypted"].setText(encrypted)
         attempts = int(getattr(job, "attempt_count", 0) or 0)
         self.detail_values["attempts"].setText(str(attempts))
@@ -1870,6 +2232,18 @@ class Smart7zQtWindow(QMainWindow):
         self.detail_values["output"].setText(job.final_destination or self.config.get("target_dir", "-") or "-")
         self.detail_values["policy"].setText(cleanup_policy_text(job.cleanup_policy_snapshot))
         self.detail_values["source"].setText(retention_text(job))
+=======
+        detail_text["encrypted"] = encrypted
+        attempts = int(getattr(job, "attempt_count", 0) or 0)
+        detail_text["attempts"] = str(attempts)
+        detail_text["candidate"] = f"{len(job.stego_candidates)} 个" if job.stego_candidates else "-"
+        detail_text["output"] = job.final_destination or self.config.get("target_dir", "-") or "-"
+        detail_text["policy"] = cleanup_policy_text(job.cleanup_policy_snapshot)
+        detail_text["source"] = retention_text(job)
+        for key, text in detail_text.items():
+            self.detail_values[key].setText(text)
+            self.detail_values[key].setToolTip(text)
+>>>>>>> origin/main
 
     def _update_summary(self) -> None:
         total = len(self.jobs)
@@ -1990,11 +2364,15 @@ class Smart7zQtWindow(QMainWindow):
             return
         current = self.scheduler.current_job if self.scheduler is not None else None
         current_active = bool(current is not None and current.state not in TERMINAL_STATES)
+<<<<<<< HEAD
         selected = (
             self._selected_jobs()
             if getattr(self, "_job_table_model_ready", False)
             else []
         )
+=======
+        selected = self._selected_jobs() if hasattr(self, "job_table") else []
+>>>>>>> origin/main
         selected_active = any(job.state not in TERMINAL_STATES for job in selected)
         terminal_exists = any(job.state in TERMINAL_STATES for job in self.jobs.values())
         noncurrent_pending = any(
@@ -2026,10 +2404,17 @@ class Smart7zQtWindow(QMainWindow):
         self.start_button.setEnabled(self.scheduler is not None and has_work)
         if self._processing_requested and has_work:
             self.start_button.setText("暂停队列")
+<<<<<<< HEAD
             self._set_deferred_icon(self.start_button, "\ue769", QColor("#FFFFFF"), 14)
         else:
             self.start_button.setText("开始")
             self._set_deferred_icon(self.start_button, "\ue768", QColor("#FFFFFF"), 14)
+=======
+            self.start_button.setIcon(fluent_icon("\ue769", QColor("#FFFFFF"), 14))
+        else:
+            self.start_button.setText("开始")
+            self.start_button.setIcon(fluent_icon("\ue768", QColor("#FFFFFF"), 14))
+>>>>>>> origin/main
 
     def _append_log_line(self, message: str) -> None:
         text = " ".join(str(message).replace("\x00", "").splitlines()).strip()
@@ -2038,9 +2423,12 @@ class Smart7zQtWindow(QMainWindow):
         stamp = datetime.datetime.now().strftime("%H:%M:%S")
         self.log_output.appendPlainText(f"[{stamp}] {text}")
 
+<<<<<<< HEAD
     def log_event(self, code: str, **values) -> None:
         self._append_log_line(format_user_message(code, **values))
 
+=======
+>>>>>>> origin/main
     def _queue_password_prompt(self, job: Job) -> None:
         if self._current_pwd_job and self._current_pwd_job.task_id == job.task_id:
             return
@@ -2053,7 +2441,10 @@ class Smart7zQtWindow(QMainWindow):
             self._pending_pwd_jobs.append(job)
 
     def _show_password_prompt(self) -> None:
+<<<<<<< HEAD
         self._ensure_activity_shelf()
+=======
+>>>>>>> origin/main
         job = self._current_pwd_job
         if job is None:
             self._reset_password_prompt()
@@ -2093,7 +2484,10 @@ class Smart7zQtWindow(QMainWindow):
             self._sync_activity_visibility()
 
     def _reset_password_prompt(self) -> None:
+<<<<<<< HEAD
         self._ensure_activity_shelf()
+=======
+>>>>>>> origin/main
         self.password_edit.clear()
         self.password_reveal_button.setChecked(False)
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -2121,7 +2515,10 @@ class Smart7zQtWindow(QMainWindow):
             self._pending_stego_jobs.append(job)
 
     def _show_stego_prompt(self) -> None:
+<<<<<<< HEAD
         self._ensure_activity_shelf()
+=======
+>>>>>>> origin/main
         job = self._current_stego_job
         if job is None:
             self._sync_activity_visibility()
@@ -2156,10 +2553,16 @@ class Smart7zQtWindow(QMainWindow):
             self._current_stego_job = self._pending_stego_jobs.pop(0)
             self._show_stego_prompt()
         else:
+<<<<<<< HEAD
+=======
+            self.stego_combo.clear()
+            self.stego_title.setText("选择隐写候选")
+>>>>>>> origin/main
             self._sync_activity_visibility()
 
     def _sync_activity_visibility(self) -> None:
         if self._current_pwd_job is not None:
+<<<<<<< HEAD
             self._ensure_activity_shelf()
             self.activity_stack.setCurrentWidget(self.password_activity_page)
             self.activity_shelf.show()
@@ -2169,6 +2572,14 @@ class Smart7zQtWindow(QMainWindow):
             self.activity_shelf.show()
         elif self._scan_active:
             self._ensure_activity_shelf()
+=======
+            self.activity_stack.setCurrentWidget(self.password_activity_page)
+            self.activity_shelf.show()
+        elif self._current_stego_job is not None:
+            self.activity_stack.setCurrentWidget(self.stego_activity_page)
+            self.activity_shelf.show()
+        elif self._scan_active:
+>>>>>>> origin/main
             self.activity_stack.setCurrentWidget(self.scan_activity_page)
             self.activity_shelf.show()
         else:
@@ -2198,7 +2609,10 @@ class Smart7zQtWindow(QMainWindow):
         config_snapshot: Optional[dict] = None,
         precomputed_candidates=None,
     ) -> bool:
+<<<<<<< HEAD
         _startup_trace(f"enqueue:start:{path}")
+=======
+>>>>>>> origin/main
         try:
             normalized = os.path.normpath(path)
             logical_key = logical_archive_key(normalized)
@@ -2221,9 +2635,13 @@ class Smart7zQtWindow(QMainWindow):
             return False
         accepted = bool(self.scheduler.submit(job))
         if not accepted:
+<<<<<<< HEAD
             _startup_trace("enqueue:rejected")
             return False
         _startup_trace(f"enqueue:accepted:{job.task_id}:auto={auto_start}")
+=======
+            return False
+>>>>>>> origin/main
         self.seen_paths.add(logical_key)
         if auto_start:
             self.scheduler.enable_processing()
@@ -2341,7 +2759,10 @@ class Smart7zQtWindow(QMainWindow):
         self._scan_thread.start()
 
     def _show_scan_activity(self) -> None:
+<<<<<<< HEAD
         self._ensure_activity_shelf()
+=======
+>>>>>>> origin/main
         self._scan_active = True
         self.scan_progress.setValue(0)
         self.scan_percent.setText("0%")
@@ -2353,7 +2774,10 @@ class Smart7zQtWindow(QMainWindow):
     def _update_scan_progress(self, scanned: int, found: int, path: str, progress: int) -> None:
         if not self._scan_active:
             return
+<<<<<<< HEAD
         self._ensure_activity_shelf()
+=======
+>>>>>>> origin/main
         name = Path(path).name if path else "准备中"
         self.scan_title.setText(f"正在扫描   {name}")
         self.scan_meta.setText(f"第 {scanned} 个文件   ·   已发现 {found} 个任务   ·   {self._scan_mode_label()}")
@@ -2378,9 +2802,15 @@ class Smart7zQtWindow(QMainWindow):
         self._scan_thread = None
         if failure:
             self._disable_context_auto_close(abnormal=True)
+<<<<<<< HEAD
             self.log_event("SCAN_FAILED", count=found, detail=failure)
         else:
             self.log_event("SCAN_COMPLETE", count=found)
+=======
+            self._log_event("SCAN_FAILED", count=found, detail=failure)
+        else:
+            self._log_event("SCAN_COMPLETE", count=found)
+>>>>>>> origin/main
         if getattr(self, "_scan_auto_start", False) and self.scheduler is not None:
             self.scheduler.enable_processing()
             self._processing_requested = True
@@ -2413,7 +2843,11 @@ class Smart7zQtWindow(QMainWindow):
 
     def _start_processing(self) -> None:
         if not self._sync_config():
+<<<<<<< HEAD
             self.log_event("CONFIG_SYNC_FAILED")
+=======
+            self._log_event("CONFIG_SYNC_FAILED")
+>>>>>>> origin/main
             return
         if self.scheduler is None:
             return
@@ -2421,7 +2855,11 @@ class Smart7zQtWindow(QMainWindow):
         self.scheduler.enable_processing()
         self._processing_requested = True
         self.status_state.setText("●  正在处理")
+<<<<<<< HEAD
         self.log_event("QUEUE_STARTED")
+=======
+        self._log_event("QUEUE_STARTED")
+>>>>>>> origin/main
         self._update_summary()
 
     def _pause_processing(self) -> None:
@@ -2434,14 +2872,22 @@ class Smart7zQtWindow(QMainWindow):
     def _cancel_current(self) -> None:
         if self.scheduler is not None and self.scheduler.current_job is not None:
             self.scheduler.cancel_current()
+<<<<<<< HEAD
             self.log_event("CANCEL_CURRENT_REQUESTED")
+=======
+            self._log_event("CANCEL_CURRENT_REQUESTED")
+>>>>>>> origin/main
         self._update_summary()
 
     def _cancel_remaining(self) -> None:
         self._cancel_scan()
         if self.scheduler is not None:
             self.scheduler.cancel_remaining()
+<<<<<<< HEAD
             self.log_event("CANCEL_REMAINING")
+=======
+            self._log_event("CANCEL_REMAINING")
+>>>>>>> origin/main
         self._update_summary()
 
     def _clear_finished(self) -> None:
@@ -2463,11 +2909,18 @@ class Smart7zQtWindow(QMainWindow):
             remaining_ids = task_ids - ({current_id} if current_id else set())
             if remaining_ids:
                 self.scheduler.cancel_jobs(remaining_ids)
+<<<<<<< HEAD
             self.log_event("CANCEL_REMAINING")
         self._update_summary()
 
     def _remove_finished_ids(self, task_ids: Iterable[str]) -> None:
         self._ensure_job_table_model()
+=======
+            self._append_log_line(f"已请求取消 {len(task_ids)} 个选中任务")
+        self._update_summary()
+
+    def _remove_finished_ids(self, task_ids: Iterable[str]) -> None:
+>>>>>>> origin/main
         ids = set(task_ids)
         if not ids:
             return
@@ -2489,15 +2942,25 @@ class Smart7zQtWindow(QMainWindow):
     def _toggle_inspector(self) -> None:
         sizes = self.workspace_splitter.sizes()
         if self._inspector_expanded:
+<<<<<<< HEAD
             self._inspector_sizes = sizes
             total = max(1, sum(sizes))
             self.workspace_splitter.setSizes([total, 1])
+=======
+            if len(sizes) > 1 and sizes[1] > 0:
+                self._inspector_sizes = sizes
+            self.inspector_panel.hide()
+>>>>>>> origin/main
             self.inspector_toggle.setText("显示详情")
             self.inspector_toggle.setToolTip("显示任务详情和运行日志")
             self._inspector_expanded = False
         else:
             total = max(1, sum(sizes))
             expanded = self._inspector_sizes[1] if len(self._inspector_sizes) > 1 else 190
+<<<<<<< HEAD
+=======
+            self.inspector_panel.show()
+>>>>>>> origin/main
             self.workspace_splitter.setSizes([max(1, total - expanded), expanded])
             self.inspector_toggle.setText("隐藏详情")
             self.inspector_toggle.setToolTip("隐藏任务详情和运行日志")
@@ -2687,6 +3150,7 @@ QT_STYLESHEET = r"""
     color: #1f1f1f;
 }
 QMainWindow, QWidget#centralSurface { background: #ffffff; }
+<<<<<<< HEAD
 QMenuBar {
     background: #fbfbfb;
     border-bottom: 1px solid #e4e4e4;
@@ -2699,6 +3163,8 @@ QMenuBar::item {
     border-radius: 3px;
 }
 QMenuBar::item:selected { color: #00695f; background: #e5f3f1; border-color: #badfd9; }
+=======
+>>>>>>> origin/main
 QMenu { background: #fafafa; border: 1px solid #cfcfcf; padding: 4px; }
 QMenu::item { min-height: 24px; padding: 3px 20px 3px 9px; border-radius: 3px; }
 QMenu::item:selected { color: #00695f; background: #e5f3f1; }
@@ -2838,17 +3304,37 @@ QHeaderView::section {
     font-weight: 600;
 }
 QSplitter::handle { background: #d1d1d1; }
+<<<<<<< HEAD
 QTabWidget::pane { border: 0; border-top: 1px solid #d1d1d1; }
 QTabBar::tab {
+=======
+QTabWidget::pane { border: 0; border-top: 1px solid #cfd6d3; background: #ffffff; }
+QTabBar#inspectorTabBar { background: #f4f7f6; border-top: 1px solid #d8dfdc; }
+QTabBar#inspectorTabBar::tab {
+>>>>>>> origin/main
     min-width: 92px;
     min-height: 34px;
     padding: 0 14px;
     color: #565656;
+<<<<<<< HEAD
     background: #ffffff;
     border: 0;
     border-bottom: 2px solid transparent;
 }
 QTabBar::tab:selected { color: #00796b; border-bottom-color: #00796b; font-weight: 600; }
+=======
+    background: #f4f7f6;
+    border: 0;
+    border-right: 1px solid #e1e6e4;
+    border-bottom: 2px solid transparent;
+}
+QTabBar#inspectorTabBar::tab:selected {
+    color: #00796b;
+    background: #ffffff;
+    border-bottom-color: #00796b;
+    font-weight: 600;
+}
+>>>>>>> origin/main
 QStatusBar { min-height: 22px; background: #f7f7f7; border-top: 1px solid #d1d1d1; }
 QStatusBar QLabel { padding: 0 7px; color: #5f5f5f; }
 QLabel#statusActive { color: #00796b; font-weight: 600; }
@@ -2900,10 +3386,29 @@ def _qt_forward_exit_code(
 ) -> Optional[int]:
     if result.accepted:
         return 0
+<<<<<<< HEAD
     if not result.reached_existing:
         return None
     if allow_shutdown_handoff and result.reason == "server_stopping":
         return None
+=======
+    if allow_shutdown_handoff and result.reason == "server_stopping":
+        return None
+    if result.status == IPC_FORWARD_REJECTED:
+        QMessageBox.critical(
+            parent,
+            "启动请求无效" if not result.reached_existing else "请求未接纳",
+            (
+                "本次启动参数无效，Smart7z 未创建任务。\n\n"
+                if not result.reached_existing
+                else "已有 Smart7z 实例，但本次请求没有被确认接纳。\n\n"
+            )
+            + f"原因：{result.reason or result.status}",
+        )
+        return 1
+    if not result.reached_existing:
+        return None
+>>>>>>> origin/main
     QMessageBox.critical(
         parent,
         "请求未接纳",
@@ -2949,6 +3454,7 @@ def _wait_for_existing_or_claim_mutex(
         time.sleep(min(INSTANCE_STARTUP_POLL_SECONDS, remaining))
 
 
+<<<<<<< HEAD
 def run_app(argv=None, *, initial_forward_result=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     request = parse_launch_args(argv)
@@ -2968,6 +3474,15 @@ def run_app(argv=None, *, initial_forward_result=None) -> int:
 
     app = QApplication.instance() or QApplication([sys.argv[0], *argv])
     _configure_qt_application(app)
+=======
+def run_app(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    app = QApplication.instance() or QApplication([sys.argv[0], *argv])
+    _configure_qt_application(app)
+    request = parse_launch_args(argv)
+
+    forward_result = _forward_launch_request(request)
+>>>>>>> origin/main
     forward_exit_code = _qt_forward_exit_code(
         forward_result,
         None,
@@ -2979,7 +3494,10 @@ def run_app(argv=None, *, initial_forward_result=None) -> int:
     instance_mutex = None
     if sys.platform == "win32":
         instance_mutex = create_mutex()
+<<<<<<< HEAD
         _startup_trace(f"run_app:mutex:{instance_mutex is not None}")
+=======
+>>>>>>> origin/main
         if instance_mutex is None:
             instance_mutex, wait_exit_code = _wait_for_existing_or_claim_mutex(
                 request,
@@ -2998,7 +3516,10 @@ def run_app(argv=None, *, initial_forward_result=None) -> int:
             startup_extract_to_source=request.extract_to_source,
             startup_context_menu=request.context_menu,
         )
+<<<<<<< HEAD
         _startup_trace("run_app:window_ready")
+=======
+>>>>>>> origin/main
         if window.startup_blocked or window.scheduler is None:
             window._shutdown(force=True)
             return 1
@@ -3017,9 +3538,14 @@ def run_app(argv=None, *, initial_forward_result=None) -> int:
             )
             return 1
         window.show()
+<<<<<<< HEAD
         window.activate_window(disarm_context_auto_close=False)
         window._start_startup_processing()
         _startup_trace("run_app:event_loop")
+=======
+        window.activate_window()
+        window._start_startup_processing()
+>>>>>>> origin/main
         return app.exec()
     finally:
         shutdown_complete = True
