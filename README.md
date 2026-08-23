@@ -1,6 +1,6 @@
 # Smart7z
 
-Smart7z 是面向 Windows 的图形化压缩包发现、预检、解压、校验和源文件清理工具。发行版内置 7-Zip，源码使用 Python 3.12 和 Tkinter。
+Smart7z 是面向 Windows 的图形化压缩包发现、预检、解压、校验和源文件清理工具。发行版内置 7-Zip，源码使用 Python 3.12 和 PySide6。
 
 ## 目录
 

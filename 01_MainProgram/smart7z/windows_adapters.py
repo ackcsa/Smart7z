@@ -12,6 +12,8 @@ import uuid
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from local_paths import is_local_filesystem_path
+
 logger = logging.getLogger(__name__)
 
 FOF_SILENT = 0x0004
@@ -68,6 +70,7 @@ _CONTEXT_MENU_SCOPES = (
     r"Software\Classes\*\shell",
     r"Software\Classes\Directory\shell",
 )
+_CONTEXT_MENU_LAUNCHER_NAME = "Smart7zShell.exe"
 
 if sys.platform == 'win32':
     _shell32 = ctypes.WinDLL('shell32', use_last_error=True)
@@ -247,21 +250,6 @@ def _fsync_directory(path: str) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-
-
-def is_local_filesystem_path(path: str) -> bool:
-    """Accept drive-letter paths while rejecting UNC, devices and remote drives."""
-
-    if not isinstance(path, str) or not path or path.startswith(("\\\\", "//")):
-        return False
-    absolute = os.path.abspath(os.path.normpath(path))
-    drive, _tail = os.path.splitdrive(absolute)
-    if not re.fullmatch(r"[A-Za-z]:", drive):
-        return False
-    if sys.platform != "win32":
-        return os.path.isabs(absolute)
-    drive_type = int(_GetDriveTypeW(drive + "\\"))
-    return drive_type not in (DRIVE_UNKNOWN, DRIVE_NO_ROOT_DIR, DRIVE_REMOTE)
 
 
 def make_startupinfo() -> Optional[subprocess.STARTUPINFO]:
@@ -495,6 +483,9 @@ def build_context_menu_command(cleanup_policy: str = "keep") -> str:
     )
     executable = os.path.abspath(sys.executable)
     if getattr(sys, "frozen", False):
+        launcher = os.path.join(os.path.dirname(executable), _CONTEXT_MENU_LAUNCHER_NAME)
+        if os.path.isfile(launcher):
+            executable = launcher
         prefix = subprocess.list2cmdline(
             [
                 executable,

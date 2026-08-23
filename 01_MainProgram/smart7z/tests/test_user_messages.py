@@ -20,7 +20,7 @@ MANUAL_PATH = (
     if PACKAGED_MANUAL_PATH.is_file()
     else WORKSPACE_MANUAL_PATH
 )
-UI_PATH = PROJECT_ROOT / "ui_app.py"
+UI_PATH = PROJECT_ROOT / "ui_qt.py"
 EXECUTOR_PATH = PROJECT_ROOT / "executor.py"
 
 
@@ -151,36 +151,6 @@ class TestUserMessageCatalog(unittest.TestCase):
         self.assertNotIn("取消剩余", manual)
         self.assertNotIn("工具 → 注册右键菜单", manual)
 
-    def test_ui_log_events_use_catalog_codes(self):
-        source = UI_PATH.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        seen_codes = set()
-        raw_append_methods = set()
-
-        for method in (
-            node
-            for node in tree.body
-            if isinstance(node, ast.ClassDef)
-            for node in node.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        ):
-            for call in (node for node in ast.walk(method) if isinstance(node, ast.Call)):
-                function = call.func
-                if not isinstance(function, ast.Attribute):
-                    continue
-                if function.attr == "log_event":
-                    self.assertTrue(call.args, method.name)
-                    self.assertIsInstance(call.args[0], ast.Constant, method.name)
-                    code = call.args[0].value
-                    self.assertIn(code, USER_MESSAGE_TEMPLATES, method.name)
-                    seen_codes.add(code)
-                elif function.attr == "_append_log_line":
-                    raw_append_methods.add(method.name)
-
-        self.assertNotIn("self.log(", source)
-        self.assertEqual(raw_append_methods, {"_handle_event", "log_event"})
-        self.assertTrue(seen_codes)
-
     def test_executor_user_notices_are_catalog_messages(self):
         tree = ast.parse(EXECUTOR_PATH.read_text(encoding="utf-8"))
         notice_calls = []
@@ -198,11 +168,25 @@ class TestUserMessageCatalog(unittest.TestCase):
                 self.assertIsInstance(message_call.func, ast.Name)
                 self.assertEqual(message_call.func.id, "format_user_message")
 
+    def test_ui_log_events_use_catalog_codes(self):
+        tree = ast.parse(UI_PATH.read_text(encoding="utf-8"))
+        seen_codes = set()
+        for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
+            function = call.func
+            if not isinstance(function, ast.Attribute) or function.attr != "log_event":
+                continue
+            self.assertTrue(call.args)
+            self.assertIsInstance(call.args[0], ast.Constant)
+            code = call.args[0].value
+            self.assertIn(code, USER_MESSAGE_TEMPLATES)
+            seen_codes.add(code)
+        self.assertTrue(seen_codes)
+
     def test_every_catalog_message_has_a_runtime_callsite(self):
         used_codes = set()
         for path, function_names in (
-            (UI_PATH, {"log_event"}),
             (EXECUTOR_PATH, {"format_user_message"}),
+            (UI_PATH, {"log_event"}),
         ):
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):

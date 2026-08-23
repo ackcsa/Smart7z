@@ -152,6 +152,29 @@ Encrypted = -
         m = parse_slt(sample)
         self.assertEqual(len(m.members), 1)
 
+    def test_ignores_empty_archive_root_directory_record(self):
+        sample = """Type = zip
+----------
+Path =
+Folder = +
+
+Path = first.mp4
+Folder = -
+Size = 10
+
+Path = second.mp4
+Folder = -
+Size = 20
+"""
+        manifest = parse_slt(sample)
+
+        self.assertEqual(manifest.entry_count, 2)
+        self.assertEqual(
+            [member.path for member in manifest.members],
+            ["first.mp4", "second.mp4"],
+        )
+        self.assertEqual(manifest.total_size, 30)
+
     def test_filename_with_equals(self):
         sample = """----------
 Path = file=name.txt

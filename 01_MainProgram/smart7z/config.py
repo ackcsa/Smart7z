@@ -30,7 +30,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "del_archive": False,
     "deep_scan": False,
     "steganographier_compat_mode": True,
-    "temp_dir": r"C:\Temp_Smart7z",
+    "temp_dir": os.path.join(tempfile.gettempdir(), "Smart7z"),
     "password_file": "code.txt",
     "extract_mode": "staging",
     "config_version": CONFIG_VERSION,

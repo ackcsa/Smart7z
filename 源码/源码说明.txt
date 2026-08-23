@@ -1,32 +1,38 @@
-Smart 7z Ultra 1.0.0 源码版
+Smart 7z Ultra 1.0.2 源码版
 ===========================
+
+发布日期：2026-08-23
 
 文件
 ----
-- Smart7z-1.0.0-source.zip
+- Smart7z-1.0.2-source.zip
+- SHA256SUMS.txt
 
-源码包包含一方 Python 源码、测试、构建脚本、资源模板和用户手册；
-不包含构建产物、虚拟环境、离线工具链、缓存或运行时恢复记录。
+源码包内容
+----------
+- Smart7z 一方 Python 源码、PySide6 界面、测试、构建脚本、资源模板和用户手册。
+- 为满足 Qt/PySide6 许可证要求，包含对应源码与相关许可证说明。
+- 不包含 build、release、虚拟环境、离线构建工具、缓存或运行时恢复记录。
+- resources/code.txt 为空，resources/smart7z_config.json 默认保留源压缩包。
 
-本次更新新增默认开启的 SteganographierGUI 非全读取兼容探测，支持
-普通 MP4 追加 ZIP、ZArchiver free 原子和 MKV ZIP 附件；同时包括
-非饱和经典字段 ZIP64 严格几何校验，以及深度扫描、直接添加和拖入对随机
-RAR/7z/ZIP 诱饵的优先识别；修复兼容模式预计算候选未进入执行器切割流程
-而误报 NOT_ARCHIVE 的问题；同时包括三级互斥文件扫描菜单、深度扫描通用
-回退的单轮流式预检与候选复用、非常驻扫描进度、
-任务详情高度调整和小包优先调度、密码提示布局恢复、旧密码本继承、
-自动候选耗尽后手动密码只尝试本次输入、不重复读取会话密码和密码本、
-普通 EXE 目录保护及高置信度 ZIP/7z SFX 例外，以及此前的关闭阶段
-单实例接管、完整加密清单复用、有界流式 SLT 解析、安全上限和空 stego
-会话目录安全回收。
+1.0.2 主要变化
+--------------
+- 修复 7-Zip SLT 清单中空路径根目录元记录被当成实际成员、导致部分 ZIP 报 INTERNAL_ERROR 的问题。
+- 修复顶部菜单裁切、文件与目录拖放、右键窗口自动退出及多项 Qt 界面回归。
+- 新增 shell_launcher.cs / Smart7zShell.exe 轻量右键入口；已有实例时无需加载完整 Python/Qt 运行时。
+- Windows UI 启动避免字体数据库精确匹配；隐藏活动提示区和空任务表模型采用延迟构建，降低首屏构造抖动。
+- launch_ipc.py 提供最小认证 IPC 转发边界，runtime_ipc.py 统一单实例状态与关闭协调。
+- 保留完整安全预检、SteganographierGUI 兼容探测、ZIP64 几何校验、嵌套保护、密码候选及有界流式 7-Zip 清单解析。
+- 全量自动化测试 385 项全部通过。
 
 运行与验证
 ----------
-- 建议使用 64 位 Python 3.12（含 Tkinter）。
+- 建议使用 64 位 Python 3.12，并安装 PySide6。
 - 安装 7-Zip，或将 7z.exe 放在解压后的源码根目录。
 - 启动：python smart7z.py
 - 全量测试：python -m unittest discover -s tests -v
-- 最终源码验证结果：372/372 通过，真实 7-Zip 集成用例全部通过。
+- 真实 7-Zip 集成测试：python -m unittest tests.test_integration_real7z -v
+- 构建依赖：python -m pip install -r requirements-build.txt
 - 构建：powershell -ExecutionPolicy Bypass -File .\build_release.ps1
 
 完整说明见源码包中的 README.txt 和 Smart7z-User-Manual.html。

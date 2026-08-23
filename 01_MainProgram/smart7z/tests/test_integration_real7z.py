@@ -118,6 +118,35 @@ class TestRealSevenZipPipeline(unittest.TestCase):
                     "world",
                 )
 
+    def test_zip_with_empty_root_directory_record_extracts_normally(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive = os.path.join(temp_dir, "- Latest Video -.zip")
+            destination = os.path.join(temp_dir, "output")
+            with zipfile.ZipFile(archive, "w") as output:
+                root = zipfile.ZipInfo("")
+                root.external_attr = (0o40775 << 16) | 0x10
+                output.writestr(root, b"")
+                output.writestr("first.mp4", b"first")
+                output.writestr("second.mp4", b"second")
+
+            state, promoted, job = self._execute(
+                archive,
+                destination,
+                "staging",
+            )
+
+            self.assertEqual(state, JobState.COMPLETE, job.error_message)
+            self.assertIsNone(promoted)
+            self.assertTrue(job.commit_verified)
+            self.assertEqual(
+                Path(job.final_destination, "first.mp4").read_bytes(),
+                b"first",
+            )
+            self.assertEqual(
+                Path(job.final_destination, "second.mp4").read_bytes(),
+                b"second",
+            )
+
     def test_empty_zip_commits_verified_empty_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             archive = os.path.join(temp_dir, "empty.zip")

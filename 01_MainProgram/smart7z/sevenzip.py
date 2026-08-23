@@ -559,6 +559,12 @@ def _flush_member(
         or path.endswith("/")
         or path.endswith("\\")
     )
+    # 7-Zip emits an archive-root record for some ZIPs/other formats:
+    # ``Path =`` with ``Folder = +``.  It is metadata for the container, not
+    # an output member; retaining it makes the manifest fail its own required
+    # path validation.
+    if not path and is_dir:
+        return
     raw_size = record.get("Size", record.get("size"))
     size = _safe_int(raw_size)
     link_target = (

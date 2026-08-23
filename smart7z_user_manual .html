@@ -394,7 +394,7 @@
           <span class="pill">窗口名称：Smart 7z Ultra</span>
           <span class="pill">适用平台：Windows</span>
           <span class="pill">安装/便携版：自带 7-Zip</span>
-          <span class="pill">图形界面：Tkinter</span>
+          <span class="pill">图形界面：PySide6 / Qt</span>
         </div>
       </div>
 
@@ -447,9 +447,9 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <thead><tr><th>项目</th><th>要求</th><th>说明</th></tr></thead>
           <tbody>
             <tr><td>操作系统</td><td>Windows（主要支持）</td><td>回收站、永久删除、右键菜单、重解析点检查和单实例通信都按 Windows 的行为实现。</td></tr>
-            <tr><td>Python</td><td>仅源码版需要，建议 64 位 Python 3.12</td><td>安装版和便携版已经包含 Python 运行时；源码版可作为普通的 Python/Tkinter 程序运行。</td></tr>
+            <tr><td>Python</td><td>仅源码版需要，建议 64 位 Python 3.12</td><td>安装版和便携版已经包含 Python 运行时；源码版需要 PySide6 运行 Qt 图形界面。</td></tr>
             <tr><td>7-Zip</td><td>安装/便携版自带；源码版需要</td><td>Smart7z 负责排队、校验和文件处理，压缩包的目录读取与解压由 7-Zip 完成。</td></tr>
-            <tr><td>拖拽依赖</td><td>发行版已带；源码版可选 <code>tkinterdnd2</code></td><td>源码环境缺失该依赖时拖拽不可用，但界面按钮、命令行和单实例通信仍可用。</td></tr>
+            <tr><td>图形界面依赖</td><td>发行版已带；源码版需安装 <code>PySide6</code></td><td>Qt 原生提供拖拽、菜单、进度和任务详情交互。</td></tr>
           </tbody>
         </table>
         <h3>交付版本</h3>
@@ -464,7 +464,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
         <h3>首次启动检查</h3>
         <ul class="checklist">
           <li>安装版和便携版已经自带 7-Zip。源码版若弹出“找不到 7z.exe”，请安装 7-Zip 或把 <code>7z.exe</code> 放到源码根目录，再重启。</li>
-          <li>若弹出“依赖缺失：未检测到 tkinterdnd2”，只影响拖拽；可以继续使用“添加文件”和“扫描文件夹”。</li>
+          <li>若源码环境提示缺少 <code>PySide6</code>，请按构建依赖安装后再启动；Qt 原生支持拖拽，无需额外拖拽扩展。</li>
           <li>若点击“开始”时配置保存失败，先把目标目录、暂存目录和密码文件改成当前用户有写权限的位置。</li>
           <li>随附的 <code>code.txt</code> 为空；需要自动尝试密码时，按“一行一个密码”自行填写。安装器只在该文件不存在时部署空模板，覆盖安装和升级不会覆盖已有密码本，卸载时也会保留。若旧安装地址已有非空密码本，而新的状态目录只有空占位或尚无密码本，程序会继续使用旧地址。该文件是明文，请勿加入公共仓库或对外分发。</li>
           <li>安装模式默认把配置、恢复日志、单实例状态和相对密码文件放到 <code>%LOCALAPPDATA%/Smart7z</code>。EXE 同目录存在 <code>portable.flag</code> 时改用便携模式，文件会写到 EXE 目录；该目录只读时无法保存设置。</li>
@@ -611,7 +611,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <thead><tr><th>入口</th><th>典型操作</th><th>自动开始</th><th>自动分类</th><th>适合场景</th></tr></thead>
           <tbody>
             <tr id="inputs-file"><td>添加文件</td><td>点击“添加文件”选择文件</td><td>否</td><td>否</td><td>明确知道要解压这些文件，尤其是包含内嵌 ZIP 或扩展名异常的文件。</td></tr>
-            <tr><td>拖入文件</td><td>把文件拖到窗口</td><td>否</td><td>否</td><td>和“添加文件”类似；拖拽依赖 <code>tkinterdnd2</code>。</td></tr>
+            <tr><td>拖入文件</td><td>把文件拖到窗口</td><td>否</td><td>否</td><td>和“添加文件”类似；由 Qt 原生拖拽事件接收。</td></tr>
             <tr><td>扫描文件夹</td><td>选择目录，让程序遍历</td><td>否</td><td>是</td><td>大批量清理普通压缩包目录，减少 Office/媒体等误入队。</td></tr>
             <tr><td>拖入文件夹</td><td>把目录拖到窗口</td><td>否</td><td>是</td><td>与“扫描文件夹”类似。</td></tr>
             <tr><td>CLI 路径</td><td><code>python smart7z.py path</code></td><td>默认是</td><td>文件否，目录是</td><td>脚本或资源管理器调用。</td></tr>
@@ -1086,9 +1086,9 @@ python smart7z.py -- --queue</code></pre>
         <table>
           <thead><tr><th>功能</th><th>说明</th><th>关键模块</th><th>状态</th></tr></thead>
           <tbody>
-            <tr><td>图形界面批量任务</td><td>支持选择文件、拖拽、扫描目录，并提供任务列表、进度、详情和日志。</td><td><code>ui_app.py</code></td><td><span class="tag ok">已实现</span></td></tr>
-            <tr><td>用户运行日志</td><td>固定说明统一显示中文、英文和稳定代码；普通进度留在任务表，批量输入只写汇总，恢复详情和总行数都有上限。严重失败整条标红，其他非正常结果只标重点短语。</td><td><code>ui_app.py</code>, <code>user_messages.py</code></td><td><span class="tag ok">已验证</span></td></tr>
-            <tr><td>单实例转发</td><td>Windows 启动互斥量先限制窗口、调度器和恢复日志只能由一个进程初始化；新进程再通过本机 IPC 把路径、启动方式、清理策略和输出位置要求交给已有实例。资源管理器多选产生的并发请求会等待并分别转交；批量请求要么整批进入等待队列，要么整批拒绝。</td><td><code>ui_app.py</code>, <code>windows_adapters.py</code></td><td><span class="tag ok">已验证</span></td></tr>
+            <tr><td>图形界面批量任务</td><td>支持选择文件、拖拽、扫描目录，并提供任务列表、进度、详情和日志。</td><td><code>ui_qt.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>用户运行日志</td><td>任务详情和运行日志分区显示，普通进度留在任务表，批量输入只写汇总，恢复详情和总行数都有上限。</td><td><code>ui_qt.py</code>, <code>user_messages.py</code></td><td><span class="tag ok">已验证</span></td></tr>
+            <tr><td>单实例转发</td><td>Windows 启动互斥量先限制窗口、调度器和恢复日志只能由一个进程初始化；新进程再通过本机 IPC 把路径、启动方式、清理策略和输出位置要求交给已有实例。资源管理器多选产生的并发请求会等待并分别转交；批量请求要么整批进入等待队列，要么整批拒绝。</td><td><code>runtime_ipc.py</code>, <code>ui_qt.py</code>, <code>windows_adapters.py</code></td><td><span class="tag ok">已验证</span></td></tr>
             <tr><td>右键菜单</td><td>为当前用户的文件和目录分别注册“智能解压到此文件夹”和“智能解压到此文件夹并删除”；两者均自动开始并强制输出到源文件所在目录，清理策略分别为 <code>keep</code> 和 <code>permanent</code>。</td><td><code>windows_adapters.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>配置加载、迁移与保存</td><td>补齐默认值，迁移旧字段 <code>del_archive</code>，解析相对路径；保存时先写临时文件，再替换原配置。</td><td><code>config.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>7-Zip 调用</td><td>统一处理清单读取、解压、进度解析、警告、取消和返回码分类。</td><td><code>sevenzip.py</code></td><td><span class="tag ok">已实现</span></td></tr>
@@ -1100,7 +1100,7 @@ python smart7z.py -- --queue</code></pre>
             <tr><td>串行调度</td><td>使用一个工作线程，从当前待处理任务中按源包大小升序选择；大小相同时保持入队顺序，密码或候选确认后的恢复任务优先。支持手动开始、取消和去重。</td><td><code>scheduler.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>校验后输出</td><td>先解压到临时目录，核对文件、目录、数量和大小；跨盘复制时同步核对成员 CRC32；文件写入磁盘后再移到最终位置。</td><td><code>executor.py</code>, <code>windows_adapters.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>部分恢复</td><td>输出尚未满足完整成功条件但仍有文件可恢复时，转移到“非完全恢复”目录。</td><td><code>executor.py</code></td><td><span class="tag ok">已实现</span></td></tr>
-            <tr><td>源文件清理</td><td>支持保留、严格回收和永久删除，只在输出完整提交并复查后执行。回收站明确不可用或单个文件超过卷容量上限时，复用恢复日志保护的永久删除流程；未知设置和普通错误会停止。清理通知同时进入任务详情和运行日志。</td><td><code>executor.py</code>, <code>windows_adapters.py</code>, <code>models.py</code>, <code>user_messages.py</code>, <code>ui_app.py</code></td><td><span class="tag ok">已实现</span></td></tr>
+            <tr><td>源文件清理</td><td>支持保留、严格回收和永久删除，只在输出完整提交并复查后执行。回收站明确不可用或单个文件超过卷容量上限时，复用恢复日志保护的永久删除流程；未知设置和普通错误会停止。清理通知同时进入任务详情和运行日志。</td><td><code>executor.py</code>, <code>windows_adapters.py</code>, <code>models.py</code>, <code>user_messages.py</code>, <code>ui_qt.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>嵌套解压</td><td>扫描父任务输出中的内层压缩包，并限制深度、数量、总字节数；普通 EXE 会保护其本目录和父目录，高置信度 SFX 除外。</td><td><code>nested.py</code></td><td><span class="tag ok">已实现</span></td></tr>
             <tr><td>恢复日志</td><td>记录程序创建的临时目录、输出移动、源文件暂存和会话目录。记录无法写入时停止相关操作；目录元数据摘要发生变化或出现未登记内容时保留整个目录。</td><td><code>recovery.py</code>, <code>windows_adapters.py</code></td><td><span class="tag ok">已实现</span></td></tr>
           </tbody>
@@ -1159,8 +1159,9 @@ python smart7z.py -- --queue</code></pre>
         <table>
           <thead><tr><th>文件</th><th>职责</th><th>关键点</th></tr></thead>
           <tbody>
-            <tr><td><code>smart7z.py</code></td><td>程序入口。</td><td>调用 <code>ui_app.run_app</code>；启动异常时尝试用 Tk 消息框显示错误。</td></tr>
-            <tr><td><code>ui_app.py</code></td><td>Tkinter 界面、路径输入、IPC、右键菜单和配置同步。</td><td>界面、命令行、右键菜单和 IPC 收到的文件最终都转换为 <code>Job</code>，并保留外部请求指定的清理策略和输出位置要求，再交给 <code>Scheduler</code>。</td></tr>
+            <tr><td><code>smart7z.py</code></td><td>程序入口。</td><td>调用 <code>ui_qt.run_app</code>；启动异常时显示 Qt 无关的系统错误信息。</td></tr>
+            <tr><td><code>ui_qt.py</code></td><td>PySide6 界面、路径输入、拖拽、任务详情、日志、右键菜单和配置同步。</td><td>界面、命令行、右键菜单和 IPC 收到的文件最终都转换为 <code>Job</code>，并交给 <code>Scheduler</code>。</td></tr>
+            <tr><td><code>runtime_ipc.py</code></td><td>启动参数、单实例互斥协作和本机 IPC。</td><td>不依赖任何 GUI 工具包，供 Qt 入口和运行时安全测试共用。</td></tr>
             <tr><td><code>models.py</code></td><td>状态、错误、清理策略、任务、清单和输出移动记录等数据模型。</td><td>定义 <code>JobState</code>、<code>ErrorCategory</code>、<code>CleanupPolicy</code>、<code>Job</code>；任务会记录清理策略、“输出到源目录”覆盖和最近 50 条用户通知。</td></tr>
             <tr><td><code>user_messages.py</code></td><td>用户可见消息目录。</td><td>集中保存运行日志和源文件清理通知的中英文模板与稳定代码，供程序和手册同步检查。</td></tr>
             <tr><td><code>config.py</code></td><td>配置路径、默认值、迁移、保存和 7-Zip 定位。</td><td>源码运行时使用 <code>resources</code>；打包后的安装模式使用 <code>%LOCALAPPDATA%/Smart7z</code>；存在 <code>portable.flag</code> 时使用 EXE 目录。</td></tr>
@@ -1192,7 +1193,7 @@ python smart7z.py -- --queue</code></pre>
             <tr><td><code>wait_disk_space</code></td><td><code>true</code></td><td>空间不足时是否等待。</td></tr>
             <tr><td><code>steganographier_compat_mode</code></td><td><code>true</code></td><td>默认扫描模式。只跳读识别 SteganographierGUI 兼容的 MP4/MKV ZIP，不顺序读取媒体主体；开启深度扫描时自动关闭。</td></tr>
             <tr><td><code>deep_scan</code></td><td><code>false</code></td><td>是否对无法轻量识别的文件做一次 ZIP、7z、RAR 全文件流式预检；开启时自动关闭隐写者兼容模式。直接指定的文件不受此开关限制；嵌套任务始终不做深度扫描。</td></tr>
-            <tr><td><code>temp_dir</code></td><td><code>C:/Temp_Smart7z</code></td><td>暂存模式使用的临时根。</td></tr>
+            <tr><td><code>temp_dir</code></td><td><code>%TEMP%/Smart7z</code></td><td>暂存模式使用的临时根；旧版不可写的 <code>C:/Temp_Smart7z</code> 会自动回退。</td></tr>
             <tr><td><code>password_file</code></td><td><code>code.txt</code></td><td>密码候选文件路径。安装模式的相对路径通常落在用户状态目录；若旧安装地址已有非空密码本且状态位置没有有效内容，则继续使用旧地址。源码和便携模式按各自状态根目录解析。</td></tr>
             <tr><td><code>extract_mode</code></td><td><code>staging</code></td><td><code>staging</code> 使用配置的暂存目录；<code>direct</code> 在目标目录下建立隐藏临时目录。两种模式都会先校验，再移到最终位置。</td></tr>
             <tr><td><code>config_version</code></td><td><code>1</code></td><td>配置结构版本，由程序维护。</td></tr>

@@ -38,7 +38,7 @@ from nested import NestedExtractor
 from recovery import RecoveryJournal
 from stego_candidates import find_candidates
 from discovery import logical_archive_key
-from ui_app import BoundedIPCServer, IPC_VERSION
+from runtime_ipc import BoundedIPCServer, IPC_VERSION
 
 
 class DummyRunner:

@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.0.2"
 #endif
 #ifndef SourceDir
   #error SourceDir must be supplied with /DSourceDir=...
@@ -70,6 +70,45 @@ begin
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\Smart7zExtractHere');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\Smart7zExtractHereDelete');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\Smart7z');
+end;
+
+procedure RefreshOwnedContextMenuCommand(const Scope, Verb, CleanupFlag: String);
+var
+  KeyPath: String;
+  CommandKey: String;
+  ExistingCommand: String;
+  MainExecutable: String;
+  LauncherExecutable: String;
+  UpdatedCommand: String;
+begin
+  KeyPath := Scope + '\' + Verb;
+  CommandKey := KeyPath + '\command';
+  if not RegQueryStringValue(HKCU, CommandKey, '', ExistingCommand) then
+    exit;
+
+  MainExecutable := ExpandConstant('{app}\{#MyAppExeName}');
+  if Pos(Lowercase(MainExecutable), Lowercase(ExistingCommand)) = 0 then
+    exit;
+
+  LauncherExecutable := ExpandConstant('{app}\Smart7zShell.exe');
+  UpdatedCommand := '"' + LauncherExecutable +
+    '" --context-menu --start --extract-here ' + CleanupFlag + ' "%1"';
+  RegWriteStringValue(HKCU, CommandKey, '', UpdatedCommand);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    RefreshOwnedContextMenuCommand(
+      'Software\Classes\*\shell', 'Smart7zExtractHere', '--keep-source');
+    RefreshOwnedContextMenuCommand(
+      'Software\Classes\*\shell', 'Smart7zExtractHereDelete', '--delete-source');
+    RefreshOwnedContextMenuCommand(
+      'Software\Classes\Directory\shell', 'Smart7zExtractHere', '--keep-source');
+    RefreshOwnedContextMenuCommand(
+      'Software\Classes\Directory\shell', 'Smart7zExtractHereDelete', '--delete-source');
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

@@ -21,8 +21,8 @@
 
 ### P1：退出阶段仍有单实例竞态
 
-- `ui_app.py:670` 的 `begin_draining()` 会保留监听端口，但拒绝新请求。
-- `ui_app.py:2654` 的 `_forward_exit_code()` 对已经到达旧实例但收到 `server_stopping` 的请求直接返回失败。
+- `runtime_ipc.py` 的 `begin_draining()` 会保留监听端口，但拒绝新请求。
+- `ui_qt.py` 的启动转发逻辑对已经到达旧实例但收到 `server_stopping` 的请求进入有界接管流程。
 - 新进程没有等待旧实例释放互斥锁并接管，因此用户在这个窄时间窗右键解压时，可能看到请求失败；错误路径还可能继续碰到恢复日志锁。
 
 目标行为：请求必须满足二选一，不能落在中间。
@@ -96,7 +96,7 @@ Smart7z 在解压前使用清单完成以下安全决策：
 
 #### 1.1 关闭阶段接管
 
-修改 `ui_app.py`：
+修改 `runtime_ipc.py` 与 `ui_qt.py`：
 
 1. 将 `server_stopping` 从普通“已到达但被拒绝”中单独分类。
 2. 收到该状态时不立即弹错退出，进入有界接管循环。
@@ -249,7 +249,7 @@ Smart7z 在解压前使用清单完成以下安全决策：
 
 - `tests/test_sevenzip.py`：流式解析、chunk 边界、单行上限、条目提前终止；
 - `tests/test_runtime_safety.py`：清单复用、密码顺序、失败尝试清理、阶段计时；
-- `tests/test_ui_lifecycle.py`：draining → mutex 接管竞态；
+- `tests/test_ui_runtime.py`：draining → mutex 接管竞态；
 - `tests/test_integration_real7z.py`：可见头加密 ZIP、头加密 7z、错误密码序列、超限包。
 
 门槛：修改前 314 项全部通过，新测试全部通过，真实 7-Zip 集成测试不能跳过。当前结果为 339/339，通过；其中 17 项是真实 7-Zip 用例。

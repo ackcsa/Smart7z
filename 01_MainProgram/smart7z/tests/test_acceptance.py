@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -513,6 +514,44 @@ class TestEntryPoint(unittest.TestCase):
         self.assertNotIn("class ExtractionWorker", src)
         self.assertNotIn("class Smart7zApp:", src)
         self.assertIn("run_app", src)
+
+    def test_existing_instance_is_forwarded_before_qt_import(self):
+        import launch_ipc
+        import smart7z
+
+        request = launch_ipc.ExternalIntakeRequest((r"C:\\input.zip",))
+        with (
+            mock.patch.object(launch_ipc, "parse_launch_args", return_value=request),
+            mock.patch.object(
+                launch_ipc,
+                "_forward_launch_request",
+                return_value=mock.Mock(accepted=True),
+            ),
+            mock.patch.dict(sys.modules, {"ui_qt": None}),
+        ):
+            self.assertEqual(smart7z.main(["--context-menu", r"C:\\input.zip"]), 0)
+
+    def test_fast_ipc_import_avoids_full_runtime_and_windows_integration(self):
+        source_dir = Path(__file__).resolve().parents[1]
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(source_dir)
+        probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import launch_ipc, sys; "
+                    "blocked={'config','models','runtime_ipc','windows_adapters'}; "
+                    "raise SystemExit(bool(blocked.intersection(sys.modules)))"
+                ),
+            ],
+            cwd=source_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(probe.returncode, 0, probe.stderr or probe.stdout)
 
 
 class TestInstallerPolicy(unittest.TestCase):

@@ -2,7 +2,9 @@ Smart7z third-party notices
 ============================
 
 This distribution includes third-party runtime components. Their full license
-texts are provided in the accompanying licenses directory.
+texts are provided in the accompanying licenses directory. The Qt/PySide
+license files are copied from the verified Qt 6.11.1 and Qt for Python 6.11.1
+source archives described in Qt-PySide6-CORRESPONDING_SOURCE.txt.
 
 7-Zip
   Copyright (C) 1999-2026 Igor Pavlov.
@@ -13,14 +15,27 @@ Python
   Copyright Python Software Foundation and contributors.
   Distributed under the Python Software Foundation License.
 
-Tcl/Tk
-  Copyright the Regents of the University of California, Sun Microsystems,
-  Scriptics Corporation, and other contributors.
-  The Tcl/Tk license terms are included as Tcl-Tk-license.terms.
+Microsoft Visual C++ Runtime
+  The Windows build carries one consolidated set of unmodified x64 runtime
+  DLLs selected from the locked PySide6_Essentials 6.11.1 wheel. See
+  Microsoft-Visual-Cpp-Runtime-NOTICE.txt and
+  licenses/Microsoft-Visual-Cpp-Runtime-manifest.json for the exact files,
+  versions, hashes, source, and Microsoft redistribution references. The
+  official runtime terms are included as
+  licenses/Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx. The Microsoft
+  Distributable Code section of licenses/Python-LICENSE.txt also describes
+  restrictions that apply to the Python Windows distribution.
 
-TkinterDnD2 and TkDND
-  TkinterDnD2 is a Python wrapper around the TkDND extension. Applicable
-  license texts installed by the upstream package are included here.
+Qt 6.11.1 / Qt for Python 6.11.1
+  The runtime includes QtBase 6.11.1, PySide6 6.11.1, and Shiboken6 6.11.1.
+  Applicable LGPL/GPL license bodies and the Qt GPL exception are included as
+  Qt-LGPL-3.0-only.txt, Qt-GPL-3.0-only.txt, Qt-GPL-exception-1.0.txt,
+  PySide6-LGPL-3.0-only.txt, PySide6-GPL-3.0-only.txt, and
+  PySide6-Qt-GPL-exception-1.0.txt under licenses.
+  The exact source provenance and SHA256 values are in
+  licenses/Qt-PySide6-source-manifest.json. The corresponding source trees
+  are distributed in the matching Smart7z-<version>-source.zip under
+  corresponding-source/.
 
 PyInstaller bootloader
   The executable uses the PyInstaller bootloader. Its license and bootloader
