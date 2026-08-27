@@ -421,6 +421,7 @@ function Assert-MinimalQtRuntime {
     )
     $expectedVcRuntimeVersion = '14.44.35211.0'
     $vcRuntimePattern = '(?i)^(?:concrt140|msvcp140(?:_1|_2|_atomic_wait|_codecvt_ids)?|vcruntime140(?:_1)?)\.dll$'
+    $ambientRuntimePattern = '(?i)^(?:icu.*|ucrtbase|api-ms-win-(?:core|crt)-.*)\.dll$'
     $forbiddenQtAuxiliaryFiles = @('opengl32sw.dll')
     $requiredFiles = @($allowedBindings + $allowedLibraries + $allowedPlugins)
     $violations = @()
@@ -465,6 +466,10 @@ function Assert-MinimalQtRuntime {
             ) {
                 $violations += $relative
             }
+            continue
+        }
+        if ($file.Name -match $ambientRuntimePattern) {
+            $violations += $relative
             continue
         }
 
@@ -860,24 +865,37 @@ Qt and Qt for Python source archives listed in the manifest.
 "@
 [IO.File]::WriteAllText($ReleaseSourceNotice, $sourceNotice.TrimStart(), [Text.UTF8Encoding]::new($false))
 
-$env:SMART7Z_DIST_NAME = 'Smart7z'
-$env:SMART7Z_VERSION_FILE = $versionFile
-try {
-    Write-Host 'Building Smart7z.exe...'
-    $pyInstallerArgs = @(
-        '-m', 'PyInstaller',
-        '--noconfirm',
-        '--clean',
-        '--distpath', $PyInstallerDist,
-        '--workpath', $WorkDir,
-        (Join-Path $SourceDir 'smart7z.spec')
-    )
-    & $VenvPython @pyInstallerArgs
-    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed.' }
-} finally {
-    Remove-Item Env:SMART7Z_DIST_NAME -ErrorAction SilentlyContinue
-    Remove-Item Env:SMART7Z_VERSION_FILE -ErrorAction SilentlyContinue
+Write-Host 'Building Smart7z.exe...'
+$pyInstallerArgs = @(
+    '-m', 'PyInstaller',
+    '--noconfirm',
+    '--clean',
+    '--distpath', $PyInstallerDist,
+    '--workpath', $WorkDir,
+    (Join-Path $SourceDir 'smart7z.spec')
+)
+$pyInstallerStartInfo = [Diagnostics.ProcessStartInfo]::new()
+$pyInstallerStartInfo.FileName = $VenvPython
+$pyInstallerStartInfo.WorkingDirectory = $SourceDir
+$pyInstallerStartInfo.UseShellExecute = $false
+foreach ($argument in $pyInstallerArgs) {
+    [void]$pyInstallerStartInfo.ArgumentList.Add($argument)
 }
+$pyInstallerStartInfo.Environment['PATH'] = @(
+    (Split-Path -Parent $VenvPython),
+    $PythonRoot,
+    (Join-Path $env:WINDIR 'System32'),
+    $env:WINDIR
+) -join ';'
+foreach ($name in @('PYTHONHOME', 'PYTHONPATH', 'QT_PLUGIN_PATH', 'QML2_IMPORT_PATH')) {
+    [void]$pyInstallerStartInfo.Environment.Remove($name)
+}
+$pyInstallerStartInfo.Environment['SMART7Z_DIST_NAME'] = 'Smart7z'
+$pyInstallerStartInfo.Environment['SMART7Z_VERSION_FILE'] = $versionFile
+$pyInstallerProcess = [Diagnostics.Process]::Start($pyInstallerStartInfo)
+if ($null -eq $pyInstallerProcess) { throw 'Could not start PyInstaller.' }
+$pyInstallerProcess.WaitForExit()
+if ($pyInstallerProcess.ExitCode -ne 0) { throw 'PyInstaller failed.' }
 
 if (-not (Test-Path -LiteralPath (Join-Path $BaseAppDir 'Smart7z.exe') -PathType Leaf)) {
     throw 'PyInstaller completed without producing Smart7z.exe.'

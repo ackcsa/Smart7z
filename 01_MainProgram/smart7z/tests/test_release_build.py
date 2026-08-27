@@ -131,6 +131,16 @@ class TestSmart7zSpecQtBoundary(unittest.TestCase):
             build_script,
         )
 
+    def test_pyinstaller_uses_an_isolated_native_search_path(self):
+        build_script = BUILD_SCRIPT_PATH.read_text(encoding="utf-8")
+        for expected in (
+            "[Diagnostics.ProcessStartInfo]::new()",
+            "$pyInstallerStartInfo.Environment['PATH']",
+            "'PYTHONHOME', 'PYTHONPATH', 'QT_PLUGIN_PATH', 'QML2_IMPORT_PATH'",
+            "$pyInstallerStartInfo.ArgumentList.Add",
+        ):
+            self.assertIn(expected, build_script)
+
     def test_spec_filters_to_the_minimal_qt_runtime(self):
         namespace = {
             "SPECPATH": str(PROJECT_ROOT),
@@ -298,6 +308,20 @@ Assert-MinimalQtRuntime -Root $env:SMART7Z_TEST_RUNTIME_ROOT
             result = self._run_runtime_audit(root)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("opengl32sw.dll", result.stdout + result.stderr)
+
+    def test_ambient_runtime_contamination_fails(self):
+        for name in (
+            "icuuc.dll",
+            "ucrtbase.dll",
+            "api-ms-win-crt-runtime-l1-1-0.dll",
+        ):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                self._create_minimal_runtime(root)
+                (root / "_internal" / name).touch()
+                result = self._run_runtime_audit(root)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(name, result.stdout + result.stderr)
 
     def test_forbidden_qt_translation_fails(self):
         with tempfile.TemporaryDirectory() as temp:
