@@ -43,9 +43,11 @@ from PySide6.QtGui import (
     QPainter,
     QPalette,
     QPixmap,
+    QPolygonF,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QAbstractSpinBox,
     QApplication,
     QButtonGroup,
     QCheckBox,
@@ -73,6 +75,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStyle,
     QStyleFactory,
+    QStyleOptionSpinBox,
     QStyledItemDelegate,
     QTabWidget,
     QTableView,
@@ -921,6 +924,61 @@ class DropOverlay(QFrame):
         self.hide()
 
 
+class SoftStepperSpinBox(QSpinBox):
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+
+        # QSS owns the stepper backgrounds, so draw stable arrows explicitly.
+        option = QStyleOptionSpinBox()
+        self.initStyleOption(option)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        controls = (
+            (
+                QStyle.SubControl.SC_SpinBoxUp,
+                QAbstractSpinBox.StepEnabledFlag.StepUpEnabled,
+                True,
+            ),
+            (
+                QStyle.SubControl.SC_SpinBoxDown,
+                QAbstractSpinBox.StepEnabledFlag.StepDownEnabled,
+                False,
+            ),
+        )
+        for control, enabled_flag, points_up in controls:
+            rect = self.style().subControlRect(
+                QStyle.ComplexControl.CC_SpinBox,
+                option,
+                control,
+                self,
+            )
+            painter.setBrush(
+                QColor(
+                    "#46514f"
+                    if self.isEnabled() and option.stepEnabled & enabled_flag
+                    else "#9da5a3"
+                )
+            )
+            center = rect.center()
+            half_width = 3.0
+            half_height = 1.75
+            if points_up:
+                points = (
+                    QPointF(center.x() - half_width, center.y() + half_height),
+                    QPointF(center.x(), center.y() - half_height),
+                    QPointF(center.x() + half_width, center.y() + half_height),
+                )
+            else:
+                points = (
+                    QPointF(center.x() - half_width, center.y() - half_height),
+                    QPointF(center.x(), center.y() + half_height),
+                    QPointF(center.x() + half_width, center.y() - half_height),
+                )
+            painter.drawPolygon(QPolygonF(points))
+
+
 class SettingsDialog(QDialog):
     def __init__(self, config: dict, parent: QWidget):
         super().__init__(parent)
@@ -956,7 +1014,7 @@ class SettingsDialog(QDialog):
         processing_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         processing_form.setHorizontalSpacing(12)
         processing_form.setVerticalSpacing(10)
-        self.depth_spin = QSpinBox()
+        self.depth_spin = SoftStepperSpinBox()
         self.depth_spin.setObjectName("depthSpin")
         self.depth_spin.setRange(0, 20)
         self.depth_spin.setValue(int(config.get("max_nested_depth", 2)))
