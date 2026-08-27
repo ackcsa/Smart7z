@@ -11,7 +11,6 @@ import socket
 import struct
 import tempfile
 import threading
-<<<<<<< HEAD
 from typing import Optional
 
 from config import get_state_path
@@ -36,14 +35,6 @@ from launch_ipc import (
     try_forward_to_existing,
 )
 from models import CleanupPolicy, JobState
-=======
-from dataclasses import dataclass
-from typing import Optional, Tuple
-
-from config import get_state_path
-from models import CleanupPolicy, JobState
-from windows_adapters import is_local_filesystem_path
->>>>>>> origin/main
 
 logger = logging.getLogger(__name__)
 
@@ -99,15 +90,6 @@ ARCHIVE_EXTS = frozenset(
     }
 )
 
-<<<<<<< HEAD
-=======
-IPC_PORT = 59777
-IPC_MAX_BYTES = 256 * 1024
-IPC_MAX_PATHS = 2000
-IPC_VERSION = 3
-IPC_STATE_MAX_BYTES = 4096
-IPC_ACK_TIMEOUT_SECONDS = 5.0
->>>>>>> origin/main
 INSTANCE_STARTUP_WAIT_SECONDS = 15.0
 INSTANCE_STARTUP_POLL_SECONDS = 0.1
 CONTEXT_AUTO_CLOSE_GRACE_MS = 1500
@@ -116,50 +98,6 @@ SCAN_MODE_DEEP = "deep"
 SCAN_MODE_STEGANOGRAPHIER = "steganographier"
 SCAN_MODE_NORMAL = "normal"
 
-<<<<<<< HEAD
-=======
-EXTERNAL_CLEANUP_POLICIES = frozenset(
-    {
-        CleanupPolicy.KEEP.value,
-        CleanupPolicy.PERMANENT.value,
-    }
-)
-
-IPC_FORWARD_ACCEPTED = "accepted"
-IPC_FORWARD_REJECTED = "rejected"
-IPC_FORWARD_INDETERMINATE = "indeterminate"
-IPC_FORWARD_UNAVAILABLE = "unavailable"
-
-
-@dataclass(frozen=True)
-class IPCForwardResult:
-    status: str
-    reason: str = ""
-    server_reached: bool = False
-
-    @property
-    def accepted(self) -> bool:
-        return self.status == IPC_FORWARD_ACCEPTED
-
-    @property
-    def reached_existing(self) -> bool:
-        return self.server_reached
-
-
-@dataclass(frozen=True)
-class ExternalIntakeRequest:
-    paths: Tuple[str, ...]
-    auto_start: bool = True
-    cleanup_policy: str = CleanupPolicy.KEEP.value
-    extract_to_source: bool = False
-    context_menu: bool = False
-
-    @property
-    def action(self) -> str:
-        return "enqueue" if self.paths else "activate"
-
-
->>>>>>> origin/main
 def _ipc_state_path() -> str:
     return get_state_path(f"ipc-v{IPC_VERSION}.json")
 
@@ -185,59 +123,6 @@ def _read_ipc_state(path: Optional[str] = None) -> Optional[dict]:
     return state
 
 
-<<<<<<< HEAD
-=======
-def _normalize_ipc_path(path: str) -> Optional[str]:
-    if not isinstance(path, str) or not path or "\x00" in path or not os.path.isabs(path):
-        return None
-    try:
-        normalized = os.path.abspath(os.path.normpath(path))
-        if not is_local_filesystem_path(normalized):
-            return None
-        resolved = os.path.realpath(normalized)
-        if not is_local_filesystem_path(resolved) or not os.path.exists(normalized):
-            return None
-    except (OSError, ValueError):
-        return None
-    return normalized
-
-
-def parse_launch_args(args) -> ExternalIntakeRequest:
-    """Parse paths and shell-integration flags without consuming path-like flags."""
-
-    paths = []
-    auto_start = True
-    cleanup_policy = CleanupPolicy.KEEP.value
-    extract_to_source = False
-    context_menu = False
-    parse_options = True
-    for value in list(args or []):
-        if parse_options and value == "--":
-            parse_options = False
-        elif parse_options and value == "--queue":
-            auto_start = False
-        elif parse_options and value == "--start":
-            auto_start = True
-        elif parse_options and value == "--keep-source":
-            cleanup_policy = CleanupPolicy.KEEP.value
-        elif parse_options and value == "--delete-source":
-            cleanup_policy = CleanupPolicy.PERMANENT.value
-        elif parse_options and value == "--extract-here":
-            extract_to_source = True
-        elif parse_options and value == "--context-menu":
-            context_menu = True
-        else:
-            paths.append(value)
-    return ExternalIntakeRequest(
-        paths=tuple(paths),
-        auto_start=auto_start,
-        cleanup_policy=cleanup_policy,
-        extract_to_source=extract_to_source,
-        context_menu=context_menu,
-    )
-
-
->>>>>>> origin/main
 class _IPCDispatchTicket:
     """Make timeout cancellation atomic with UI-thread dispatch start."""
 
@@ -620,174 +505,6 @@ class BoundedIPCServer:
             ticket.cancel_pending("server_stopping")
 
 
-<<<<<<< HEAD
-=======
-def forward_to_existing(
-    args,
-    port=None,
-    auto_start=True,
-    cleanup_policy=CleanupPolicy.KEEP.value,
-    extract_to_source=False,
-    context_menu=False,
-    token=None,
-    state_path: Optional[str] = None,
-) -> IPCForwardResult:
-    if not isinstance(auto_start, bool):
-        return IPCForwardResult(IPC_FORWARD_REJECTED, "invalid_auto_start")
-    if (
-        not isinstance(cleanup_policy, str)
-        or cleanup_policy not in EXTERNAL_CLEANUP_POLICIES
-    ):
-        return IPCForwardResult(IPC_FORWARD_REJECTED, "invalid_cleanup_policy")
-    if not isinstance(extract_to_source, bool):
-        return IPCForwardResult(IPC_FORWARD_REJECTED, "invalid_destination_mode")
-    if not isinstance(context_menu, bool):
-        return IPCForwardResult(IPC_FORWARD_REJECTED, "invalid_context_menu")
-    normalized = []
-    for value in args:
-        if not isinstance(value, str) or not value or "\x00" in value:
-            return IPCForwardResult(IPC_FORWARD_REJECTED, "invalid_paths")
-        path = _normalize_ipc_path(os.path.abspath(value))
-        if path is None:
-            return IPCForwardResult(IPC_FORWARD_REJECTED, "invalid_paths")
-        normalized.append(path)
-        if len(normalized) > IPC_MAX_PATHS:
-            return IPCForwardResult(IPC_FORWARD_REJECTED, "too_many_paths")
-    if context_menu and not normalized:
-        return IPCForwardResult(IPC_FORWARD_REJECTED, "invalid_context_menu")
-    if token is None:
-        state = _read_ipc_state(state_path)
-        if state is None:
-            return IPCForwardResult(IPC_FORWARD_UNAVAILABLE, "state_unavailable")
-        token = state["token"]
-        if port is None:
-            port = state["port"]
-    if port is None:
-        port = IPC_PORT
-    dispatch_attempted = False
-    try:
-        request = {
-            "version": IPC_VERSION,
-            "token": token,
-            "action": "enqueue" if normalized else "activate",
-            "paths": normalized,
-            "auto_start": auto_start,
-            "cleanup_policy": cleanup_policy,
-            "extract_to_source": extract_to_source,
-            "context_menu": context_menu,
-        }
-        payload = json.dumps(request, ensure_ascii=False).encode("utf-8")
-        if len(payload) > IPC_MAX_BYTES:
-            return IPCForwardResult(IPC_FORWARD_REJECTED, "request_too_large")
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
-            client.settimeout(0.5)
-            client.connect(("127.0.0.1", port))
-            client.settimeout(IPC_ACK_TIMEOUT_SECONDS + 1.0)
-            dispatch_attempted = True
-            client.sendall(struct.pack("!I", len(payload)) + payload)
-            client.shutdown(socket.SHUT_WR)
-            header = BoundedIPCServer._recv_exact(client, 4)
-            if header is None:
-                return IPCForwardResult(
-                    IPC_FORWARD_INDETERMINATE,
-                    "reply_header_unavailable",
-                    server_reached=True,
-                )
-            (reply_length,) = struct.unpack("!I", header)
-            if reply_length <= 0 or reply_length > 4096:
-                return IPCForwardResult(
-                    IPC_FORWARD_INDETERMINATE,
-                    "invalid_reply",
-                    server_reached=True,
-                )
-            reply = BoundedIPCServer._recv_exact(client, reply_length)
-            if reply is None:
-                return IPCForwardResult(
-                    IPC_FORWARD_INDETERMINATE,
-                    "reply_body_unavailable",
-                    server_reached=True,
-                )
-            try:
-                response = json.loads(reply.decode("ascii"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                return IPCForwardResult(
-                    IPC_FORWARD_INDETERMINATE,
-                    "invalid_reply",
-                    server_reached=True,
-                )
-            if not isinstance(response, dict):
-                return IPCForwardResult(
-                    IPC_FORWARD_INDETERMINATE,
-                    "invalid_reply",
-                    server_reached=True,
-                )
-            reason = str(response.get("reason") or "not_accepted")
-            if response.get("accepted") is True:
-                return IPCForwardResult(
-                    IPC_FORWARD_ACCEPTED,
-                    reason,
-                    server_reached=True,
-                )
-            if reason == "dispatch_in_progress":
-                return IPCForwardResult(
-                    IPC_FORWARD_INDETERMINATE,
-                    reason,
-                    server_reached=True,
-                )
-            return IPCForwardResult(
-                IPC_FORWARD_REJECTED,
-                reason,
-                server_reached=True,
-            )
-    except socket.timeout:
-        status = IPC_FORWARD_INDETERMINATE if dispatch_attempted else IPC_FORWARD_UNAVAILABLE
-        return IPCForwardResult(
-            status,
-            "socket_timeout",
-            server_reached=dispatch_attempted,
-        )
-    except (ConnectionRefusedError, OSError):
-        status = IPC_FORWARD_INDETERMINATE if dispatch_attempted else IPC_FORWARD_UNAVAILABLE
-        return IPCForwardResult(
-            status,
-            "connection_lost" if dispatch_attempted else "connection_unavailable",
-            server_reached=dispatch_attempted,
-        )
-
-
-def try_forward_to_existing(
-    args,
-    port=None,
-    auto_start=True,
-    cleanup_policy=CleanupPolicy.KEEP.value,
-    extract_to_source=False,
-    context_menu=False,
-    token=None,
-    state_path: Optional[str] = None,
-) -> bool:
-    return forward_to_existing(
-        args,
-        port=port,
-        auto_start=auto_start,
-        cleanup_policy=cleanup_policy,
-        extract_to_source=extract_to_source,
-        context_menu=context_menu,
-        token=token,
-        state_path=state_path,
-    ).accepted
-
-
-def _forward_launch_request(request: ExternalIntakeRequest) -> IPCForwardResult:
-    return forward_to_existing(
-        request.paths,
-        auto_start=request.auto_start,
-        cleanup_policy=request.cleanup_policy,
-        extract_to_source=request.extract_to_source,
-        context_menu=request.context_menu,
-    )
-
-
->>>>>>> origin/main
 __all__ = [
     "ARCHIVE_EXTS",
     "BoundedIPCServer",

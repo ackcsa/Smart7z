@@ -23,7 +23,6 @@ AppPublisher={#MyAppPublisher}
 VersionInfoVersion={#MyAppVersion}
 VersionInfoProductName={#MyAppName}
 VersionInfoDescription={#MyAppName} Installer
-LicenseFile={#SourceDir}\THIRD_PARTY_NOTICES.txt
 DefaultDirName={localappdata}\Programs\Smart7z
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
