@@ -12,6 +12,7 @@
     "config_version": 1,
     "cleanup_policy": "keep",
     "nested_extraction": false,
+    "allow_permanent_fallback": false,
     "max_nested_depth": 2,
     "space_wait_timeout": 7200,
     "max_manifest_entries": 200000,
