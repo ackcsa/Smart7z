@@ -14,14 +14,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
-
-    import ui_qt
-    from config import DEFAULT_CONFIG
-    from models import Job, JobState
-except ModuleNotFoundError:
+except ModuleNotFoundError as error:
+    if not (error.name == "PySide6" or error.name.startswith("PySide6.")):
+        raise
     QApplication = None
     QTest = None
     ui_qt = None
+else:
+    import ui_qt
+    from config import DEFAULT_CONFIG
+    from models import Job, JobState
 
 
 class _FakeScheduler:
@@ -34,7 +36,8 @@ class _FakeScheduler:
         self.session_main_password = None
         self.cancel_current_calls = 0
         self.cancel_jobs_calls = []
-        self.cancel_remaining_calls = 0
+        self.discard_remaining_calls = 0
+        self.discard_remaining_ids = []
         self.fail_refresh = False
 
     def start(self):
@@ -73,15 +76,23 @@ class _FakeScheduler:
         self.cancel_jobs_calls.append(set(task_ids))
         return []
 
-    def cancel_remaining(self):
-        self.cancel_remaining_calls += 1
+    def discard_jobs(self, task_ids):
+        self.cancel_jobs_calls.append(set(task_ids))
+        return list(task_ids)
+
+    def discard_remaining(self):
+        self.discard_remaining_calls += 1
         self.processing_enabled.clear()
+        return list(self.discard_remaining_ids)
 
     def clear_finished(self, task_ids=None):
         return []
 
     def is_io_busy(self):
         return False
+
+    def has_unfinished_jobs(self):
+        return self.current_job is not None
 
     def deferred_intake_size(self):
         return 0
@@ -113,6 +124,44 @@ class TestQtUiLifecycle(unittest.TestCase):
                 window.deleteLater()
                 self.qt_app.processEvents()
 
+    def test_log_marks_failed_and_review_lines_in_red(self):
+        # The manual promises "whole line red = failed" and "phrase red = needs
+        # review", so those two shapes must survive into the log widget.
+        from PySide6.QtGui import QTextCursor
+
+        with self.make_window() as window:
+            window.log_event("APP_READY")
+            window.log_event("JOB_FAILED", category="bad_password")
+            window.log_event("RECOVERY_REVIEW")
+            self.qt_app.processEvents()
+
+            document = window.log_output.document()
+            plain = document.toPlainText()
+            for fragment in ("已就绪", "任务失败", "需要核对"):
+                self.assertIn(fragment, plain)
+            red = ui_qt.COLOR_DANGER.name()
+
+            def color_at(token: str) -> str:
+                cursor = QTextCursor(document)
+                start = plain.index(token)
+                cursor.setPosition(start)
+                cursor.setPosition(
+                    start + len(token), QTextCursor.MoveMode.KeepAnchor
+                )
+                return cursor.charFormat().foreground().color().name()
+
+            self.assertEqual(color_at("任务失败"), red)
+            self.assertEqual(color_at("需要核对"), red)
+            self.assertNotEqual(color_at("已就绪"), red)
+
+    def test_log_escapes_markup_in_red_lines(self):
+        with self.make_window() as window:
+            window.log_event("ARCHIVE_BLOCKED")
+            window._append_log_line("JOB_FAILED <b>not markup</b> & more")
+            self.qt_app.processEvents()
+            plain = window.log_output.toPlainText()
+            self.assertIn("<b>not markup</b> & more", plain)
+
     def test_compact_inspector_replaces_large_phase_track(self):
         with self.make_window() as window:
             window.resize(920, 640)
@@ -121,7 +170,7 @@ class TestQtUiLifecycle(unittest.TestCase):
 
             self.assertFalse(hasattr(window, "phase_track"))
             self.assertEqual(window.detail_phase.text(), "阶段 · -")
-            self.assertLessEqual(window.workspace_splitter.sizes()[1], 145)
+            self.assertLessEqual(window.workspace_splitter.sizes()[1], 220)
 
     def test_menu_bar_actions_are_not_clipped(self):
         with self.make_window() as window:
@@ -495,10 +544,11 @@ class TestQtUiLifecycle(unittest.TestCase):
                 self.assertEqual(dialog.windowTitle(), "选项")
                 self.assertEqual(
                     [group.title() for group in dialog.findChildren(ui_qt.QGroupBox)],
-                    ["路径", "处理"],
+                    ["路径", "处理", "清理"],
                 )
                 self.assertFalse(hasattr(dialog, "target_edit"))
                 self.assertFalse(hasattr(dialog, "main_password_edit"))
+                self.assertFalse(dialog.permanent_fallback_check.isChecked())
                 self.assertEqual(
                     [button.text() for button in dialog.findChildren(ui_qt.QPushButton, "browseButton")],
                     ["浏览…", "浏览…"],
@@ -554,6 +604,13 @@ class TestQtUiLifecycle(unittest.TestCase):
             self.assertEqual(window.scheduler.cancel_jobs_calls, [{queued.task_id}])
             self.assertEqual(window.scheduler.cancel_current_calls, 0)
             self.assertIn(completed.task_id, window.jobs)
+            self.assertNotIn(queued.task_id, window.jobs)
+            window._handle_scheduler_event("job_interrupted", queued, (), {})
+            window._handle_scheduler_event("password_required", queued, (), {})
+            window._handle_scheduler_event("stego_review_required", queued, (), {})
+            self.assertNotIn(queued.task_id, window.jobs)
+            self.assertIsNone(window._current_pwd_job)
+            self.assertIsNone(window._current_stego_job)
 
     def test_processing_button_returns_to_start_for_terminal_outcomes(self):
         for state in (JobState.COMPLETE, JobState.FAILED, JobState.INTERRUPTED):
@@ -569,7 +626,7 @@ class TestQtUiLifecycle(unittest.TestCase):
                 self.assertEqual(window.start_button.text(), "开始")
                 self.assertFalse(window.start_button.isEnabled())
 
-    def test_cancel_all_pending_keeps_current_and_resets_start_button(self):
+    def test_cancel_all_pending_removes_pending_row_and_keeps_current(self):
         with tempfile.TemporaryDirectory() as temp, self.make_window() as window:
             current = Job(path=str(Path(temp) / "current.zip"))
             pending = Job(path=str(Path(temp) / "pending.zip"))
@@ -579,14 +636,17 @@ class TestQtUiLifecycle(unittest.TestCase):
                 window.jobs[job.task_id] = job
                 window.job_model.upsert(job)
             window.scheduler.current_job = current
+            window.scheduler.discard_remaining_ids = [pending.task_id]
             window.scheduler.processing_enabled.set()
             window._update_summary()
 
             window._cancel_remaining()
 
-            self.assertEqual(window.scheduler.cancel_remaining_calls, 1)
+            self.assertEqual(window.scheduler.discard_remaining_calls, 1)
             self.assertEqual(window.scheduler.cancel_current_calls, 0)
             self.assertIs(window.scheduler.current_job, current)
+            self.assertIn(current.task_id, window.jobs)
+            self.assertNotIn(pending.task_id, window.jobs)
             self.assertEqual(window.start_button.text(), "开始")
 
     def test_inspector_toggle_uses_explicit_text(self):

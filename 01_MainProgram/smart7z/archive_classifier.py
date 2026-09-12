@@ -34,6 +34,12 @@ RAR4 = b"Rar!\x1a\x07\x00"
 RAR5 = b"Rar!\x1a\x07\x01\x00"
 SEVEN_ZIP = b"7z\xbc\xaf\x27\x1c"
 
+# Evidence that only says "ZIP bytes appear somewhere in the scanned edges".
+# Alone it is not proof of an archive: PK markers show up inside other binary
+# formats, so a positive decision on this evidence alone additionally requires
+# a validated central directory.
+_LOOSE_ZIP_EVIDENCE = frozenset({"zip_header", "zip_tail"})
+
 
 SEMANTIC_EXTENSION_HINTS = frozenset(
     {
@@ -131,7 +137,19 @@ def has_independent_archive_structure(path: str) -> bool:
     except (OSError, ValueError):
         return False
 
-    if head.startswith((SEVEN_ZIP, RAR4, RAR5, b"MSCF", b"MSWIM\x00\x00\x00", b"!<arch>\n")):
+    if head.startswith(SEVEN_ZIP):
+        return _has_valid_7z_sfx_overlay(path, 0, file_size, scan_prefix=False)
+    if head.startswith((RAR4, RAR5)):
+        return _has_nonvolume_rar_header(head)
+    if head.startswith(b"MSCF"):
+        return (
+            len(head) >= 36
+            and struct.unpack_from("<L", head, 8)[0] == file_size
+            and not struct.unpack_from("<H", head, 30)[0] & 3
+        )
+    if head.startswith(b"MSWIM\x00\x00\x00"):
+        return len(head) >= 44 and struct.unpack_from("<HH", head, 40) == (1, 1)
+    if head.startswith(b"!<arch>\n"):
         return True
     if _has_compressed_stream_header(head[:32]):
         return True
@@ -145,6 +163,55 @@ def has_independent_archive_structure(path: str) -> bool:
     ):
         return _zip_central_info(path, file_size, tail, tail_start) is not None
     return False
+
+
+def _has_nonvolume_rar_header(head: bytes) -> bool:
+    """A RAR signature also appears on real continuations; inspect main flags."""
+    if head.startswith(RAR4):
+        offset = len(RAR4)
+        if len(head) < offset + 13:
+            return False
+        crc, kind, flags, size = struct.unpack_from("<HBHH", head, offset)
+        return (
+            kind == 0x73
+            and 13 <= size <= len(head) - offset
+            and not flags & 1
+            and zlib.crc32(head[offset + 2:offset + size]) & 0xFFFF == crc
+        )
+
+    def read_vint(offset: int, end: int) -> Tuple[int, int]:
+        value = 0
+        for shift in range(0, 63, 7):
+            if offset >= end:
+                raise ValueError("Truncated RAR header")
+            byte = head[offset]
+            offset += 1
+            value |= (byte & 0x7F) << shift
+            if not byte & 0x80:
+                return value, offset
+        raise ValueError("Invalid RAR header integer")
+
+    offset = len(RAR5)
+    if len(head) < offset + 5:
+        return False
+    crc = struct.unpack_from("<L", head, offset)[0]
+    try:
+        size, cursor = read_vint(offset + 4, len(head))
+        end = cursor + size
+        if end > len(head) or zlib.crc32(head[offset + 4:end]) & 0xFFFFFFFF != crc:
+            return False
+        kind, cursor = read_vint(cursor, end)
+        flags, cursor = read_vint(cursor, end)
+        if kind != 1:
+            return False
+        if flags & 1:
+            _extra_size, cursor = read_vint(cursor, end)
+        if flags & 2:
+            _data_size, cursor = read_vint(cursor, end)
+        archive_flags, _cursor = read_vint(cursor, end)
+        return not archive_flags & 1
+    except ValueError:
+        return False
 
 
 def classify_automatic_candidate(
@@ -180,11 +247,19 @@ def classify_automatic_candidate(
         b"%PDF-" in quick_head[:1024] and b"%%EOF" not in quick_tail
     )
     if not quick_semantic and not needs_full_pdf_check and quick_evidence:
-        return AutoDiscoveryDecision(
-            True,
-            "content_archive",
-            archive_evidence=tuple(sorted(quick_evidence)),
-        )
+        # Loose ZIP bytes found in the edges are not proof of an archive: PK
+        # markers also occur inside unrelated binaries.  A positive decision
+        # on that evidence therefore requires a validated central directory,
+        # exactly like the full-scan path below.
+        if (
+            quick_evidence - _LOOSE_ZIP_EVIDENCE
+            or has_independent_archive_structure(path)
+        ):
+            return AutoDiscoveryDecision(
+                True,
+                "content_archive",
+                archive_evidence=tuple(sorted(quick_evidence)),
+            )
 
     try:
         head, tail, tail_start = _read_edges(
@@ -273,11 +348,18 @@ def classify_automatic_candidate(
         )
 
     if archive_evidence:
-        return AutoDiscoveryDecision(
-            True,
-            "content_archive",
-            archive_evidence=tuple(sorted(archive_evidence)),
-        )
+        # ZIP bytes found anywhere in the edges only authorize a queue entry
+        # when the file really carries a central directory; other signatures
+        # and validated embedded ZIPs keep their previous behaviour.
+        if (
+            archive_evidence - _LOOSE_ZIP_EVIDENCE
+            or has_independent_archive_structure(path)
+        ):
+            return AutoDiscoveryDecision(
+                True,
+                "content_archive",
+                archive_evidence=tuple(sorted(archive_evidence)),
+            )
 
     suffix = os.path.splitext(path)[1].casefold()
     lower = path.casefold()
@@ -447,7 +529,7 @@ _PE_MACHINES = frozenset(
 
 
 def _has_valid_7z_sfx_overlay(
-    path: str, pe_image_end: int, file_size: int
+    path: str, pe_image_end: int, file_size: int, *, scan_prefix: bool = True
 ) -> bool:
     search_size = min(MAX_SFX_PREFIX_BYTES, file_size - pe_image_end)
     if search_size < 32:
@@ -459,7 +541,7 @@ def _has_valid_7z_sfx_overlay(
             search_from = 0
             while True:
                 local_offset = prefix.find(SEVEN_ZIP, search_from)
-                if local_offset < 0:
+                if local_offset < 0 or (not scan_prefix and local_offset != 0):
                     return False
                 search_from = local_offset + 1
                 archive_start = pe_image_end + local_offset
@@ -484,7 +566,7 @@ def _has_valid_7z_sfx_overlay(
                 if len(next_header) != next_size:
                     continue
                 if (
-                    next_header[:1] in {b"\x01", b"\x17"}
+                    (not next_size or next_header[:1] in {b"\x01", b"\x17"})
                     and zlib.crc32(next_header) & 0xFFFFFFFF
                     == expected_next_crc
                 ):

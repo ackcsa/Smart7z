@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import windows_adapters
+from archive_classifier import has_independent_archive_structure
 from config import cleanup_policy_from_config, get_password_file_path
 from discovery import detect_archive_set
 from models import (
@@ -39,6 +40,12 @@ from models import (
     VerificationResult,
 )
 from path_safety import is_reparse_escape, is_safe_output_path
+from password_book import (
+    PASSWORD_MAX_CANDIDATES,
+    PASSWORD_MAX_CHARS,
+    promote_password,
+    read_password_candidates,
+)
 from recovery import RecoveryJournal
 from user_messages import format_user_message
 from windows_adapters import flush_file_to_disk, move_no_replace_durable
@@ -49,7 +56,6 @@ from sevenzip import (
     SevenZipError,
     SevenZipRunner,
     classify_return_code,
-    decode_output,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,9 +68,6 @@ UNKNOWN_OUTPUT_GUARD_MIN = 1 * 1024 * 1024
 UNKNOWN_OUTPUT_GUARD_MAX = 64 * 1024 * 1024
 OUTPUT_MONITOR_INTERVAL = 0.10
 OUTPUT_MONITOR_NEAR_INTERVAL = 0.05
-PASSWORD_FILE_MAX_BYTES = 4 * 1024 * 1024
-PASSWORD_MAX_CANDIDATES = 10_000
-PASSWORD_MAX_CHARS = 4096
 COPY_BUFFER_SIZE = 1024 * 1024
 
 _UNSAFE_KIND_LABELS: Dict[str, Tuple[str, str]] = {
@@ -79,9 +82,6 @@ _UNSAFE_KIND_LABELS: Dict[str, Tuple[str, str]] = {
     "invalid_windows_path": ("Windows 不兼容路径", "Windows-incompatible path"),
 }
 _UNSAFE_KIND_PRIORITY = tuple(_UNSAFE_KIND_LABELS)
-
-_PASSWORD_FILE_LOCK = threading.RLock()
-
 
 def _unsafe_reason_kind(reason: str) -> str:
     normalized = str(reason).casefold()
@@ -370,13 +370,34 @@ class Executor:
             self._emit(job, JobState.STANDALONE, "Single archive")
 
         if not archive_set.is_complete:
+            # A name-based grouping is not authoritative for a file the user
+            # named directly, so the bypass is limited to packages that carry
+            # an independent archive structure: those are complete in
+            # themselves no matter what their name suggests, and 7-Zip decides
+            # whether they are usable.
+            #
+            # Anything else really is a missing volume.  Deferring *those* to
+            # 7-Zip is unsafe: measured 2026-09-11, 7-Zip exits 0 and even
+            # prints "Everything is Ok" for a truncated or bogus first volume,
+            # so a broken set would be reported as a success instead of the
+            # MISSING_VOLUME failure the user needs to see.
+            if not has_independent_archive_structure(job.path):
+                missing = ", ".join(
+                    str(index) for index in archive_set.missing_indexes
+                )
+                return self._fail(
+                    job,
+                    f"Archive volume set is incomplete; missing: {missing or 'unknown'}",
+                    ErrorCategory.MISSING_VOLUME,
+                    "missing_volume",
+                ), None
             missing = ", ".join(str(index) for index in archive_set.missing_indexes)
-            return self._fail(
+            self._emit(
                 job,
-                f"Archive volume set is incomplete; missing: {missing or 'unknown'}",
-                ErrorCategory.MISSING_VOLUME,
-                "missing_volume",
-            ), None
+                JobState.STANDALONE,
+                f"Explicit input; deferring volume check to 7-Zip"
+                f" (missing indexes {missing or 'unknown'})",
+            )
 
         if job.stego_selection_pending:
             selected = job.selected_candidate
@@ -745,24 +766,25 @@ class Executor:
         manual_retry_only: bool = False,
     ) -> List[Optional[str]]:
         candidates: List[Optional[str]] = []
-        seen: Set[str] = set()
+        seen: Set[Optional[str]] = set()
 
         def add(value: Optional[str]) -> None:
             normalized: Optional[str] = value
             if normalized == "":
                 normalized = None
-            key = normalized if normalized is not None else "<NO_PASSWORD>"
-            if key in seen or len(candidates) >= PASSWORD_MAX_CANDIDATES:
+            if normalized in seen or len(candidates) >= PASSWORD_MAX_CANDIDATES:
                 return
             if normalized is not None and len(normalized) > PASSWORD_MAX_CHARS:
                 return
-            seen.add(key)
+            seen.add(normalized)
             candidates.append(normalized)
 
-        add(manual_password)
+        if manual_password:
+            add(manual_password)
         if manual_retry_only:
             return candidates
-        add(session_main_password)
+        if session_main_password:
+            add(session_main_password)
         if include_no_password:
             add(None)
         for value in self._read_password_file():
@@ -774,27 +796,7 @@ class Executor:
             path = get_password_file_path(self.config)
         except (KeyError, TypeError, ValueError):
             return []
-        if not path or not os.path.isfile(path):
-            return []
-        with _PASSWORD_FILE_LOCK:
-            try:
-                with open(path, "rb") as stream:
-                    raw = stream.read(PASSWORD_FILE_MAX_BYTES + 1)
-            except OSError as exc:
-                logger.warning("Password file read failed: %s", exc)
-                return []
-        if len(raw) > PASSWORD_FILE_MAX_BYTES:
-            logger.warning("Password file ignored because it exceeds the safety limit")
-            return []
-        text = decode_output(raw)
-        values: List[str] = []
-        for line in text.splitlines():
-            value = line.strip()
-            if value and len(value) <= PASSWORD_MAX_CHARS:
-                values.append(value)
-                if len(values) >= PASSWORD_MAX_CANDIDATES:
-                    break
-        return values
+        return read_password_candidates(path) if path else []
 
     def _extract_with_password_candidates(
         self,
@@ -870,33 +872,8 @@ class Executor:
             path = get_password_file_path(self.config)
         except (KeyError, TypeError, ValueError):
             return
-        parent = os.path.dirname(os.path.abspath(path))
-        with _PASSWORD_FILE_LOCK:
-            existing = self._read_password_file()
-            ordered = [password] + [item for item in existing if item != password]
-            fd = -1
-            tmp_path = ""
-            try:
-                os.makedirs(parent, exist_ok=True)
-                fd, tmp_path = tempfile.mkstemp(
-                    prefix="smart7z_passwords_", suffix=".tmp", dir=parent
-                )
-                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
-                    fd = -1
-                    for item in ordered[:PASSWORD_MAX_CANDIDATES]:
-                        stream.write(item + "\n")
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                os.replace(tmp_path, path)
-            except OSError as exc:
-                logger.warning("Password promotion failed: %s", exc)
-                if fd >= 0:
-                    os.close(fd)
-                if tmp_path:
-                    try:
-                        os.unlink(tmp_path)
-                    except OSError:
-                        pass
+        if path:
+            promote_password(path, password)
 
     # ------------------------------------------------------------------
     # Structural candidate handling
@@ -910,34 +887,45 @@ class Executor:
     ) -> Optional[JobState]:
         if self._cancelled():
             return self._mark_interrupted(job, "Cancelled before structural scan")
+        from stego_candidates import triage_candidates
+
         candidates = (
             list(job.stego_candidates)
-            if job.stego_candidates
+            if job.stego_scan_complete or job.stego_candidates
             else self._find_stego_candidates(job)
         )
         if self._cancelled():
             return self._mark_interrupted(job, "Cancelled during structural scan")
+        try:
+            host_size = os.path.getsize(job.path)
+        except OSError:
+            return None
+        job.stego_scan_complete = True
+        job.stego_candidates = candidates
         if require_embedded:
-            try:
-                host_size = os.path.getsize(job.path)
-            except OSError:
-                return None
             candidates = [
                 candidate
                 for candidate in candidates
                 if candidate.start_offset > 0 or candidate.end_offset < host_size
             ]
-        if exact_only:
-            from stego_candidates import is_exact_high_confidence_candidate
-
-            candidates = [
-                candidate
-                for candidate in candidates
-                if is_exact_high_confidence_candidate(candidate)
-            ]
-        if not candidates:
+        triage = triage_candidates(candidates, host_size)
+        job.stego_triage_decision = triage.decision
+        job.stego_recommended_index = triage.recommended_index
+        if triage.ignored:
+            job.stego_ignored_candidates = [item for item, _reason in triage.ignored]
+            job.terminal_diagnostics.extend(
+                f"Candidate ignored: {reason} ({item.embedded_format}@{item.start_offset}:{item.end_offset})"
+                for item, reason in triage.ignored
+            )
+            del job.terminal_diagnostics[:-50]
+        candidates = triage.candidates
+        # A usable direct listing remains authoritative on the warning path.
+        # Do not hide a structural competitor merely because it is non-exact.
+        if exact_only and triage.decision != "DEFAULT_AUTO":
             return None
         job.stego_candidates = candidates
+        if not candidates:
+            return None
         selected = self._auto_select_candidate(candidates)
         if selected is None:
             job.stego_ambiguous = True
@@ -976,8 +964,12 @@ class Executor:
     def _auto_select_candidate(
         candidates: List[ArchiveCandidate],
     ) -> Optional[ArchiveCandidate]:
-        high = [candidate for candidate in candidates if candidate.confidence == Confidence.HIGH]
-        return high[0] if len(high) == 1 else None
+        from stego_candidates import triage_candidates
+
+        result = triage_candidates(
+            candidates, max((candidate.end_offset for candidate in candidates), default=0)
+        )
+        return result.candidates[0] if result.decision == "DEFAULT_AUTO" else None
 
     @staticmethod
     def _candidate_is_provisional(candidate: ArchiveCandidate) -> bool:
@@ -1323,12 +1315,13 @@ class Executor:
                         enough = False
                         break
                 except OSError as exc:
-                    return self._fail(
+                    self._fail(
                         job,
                         f"Cannot determine free space: {exc}",
                         ErrorCategory.DISK_FULL,
                         "space_check_failed",
-                    ) == JobState.COMPLETE
+                    )
+                    return False
             if enough:
                 return True
             self._emit(job, JobState.SPACE_WAIT, "Waiting for sufficient disk space")
@@ -1935,6 +1928,7 @@ class Executor:
                 )
                 return JobState.PARTIAL_RECOVERY
             if stage_owned and os.path.lexists(stage):
+                self._retain_commit_stage(job, stage)
                 job.cleanup_eligible = False
                 job.source_retention_reason = "commit_cancelled_stage_retained"
                 self._emit(
@@ -1970,6 +1964,7 @@ class Executor:
                 )
                 return JobState.PARTIAL_RECOVERY
             if stage_owned and os.path.lexists(stage):
+                self._retain_commit_stage(job, stage)
                 job.cleanup_eligible = False
                 job.source_retention_reason = "commit_stage_retained"
                 self._emit(
@@ -2041,6 +2036,16 @@ class Executor:
                 rel = self._portable_rel(os.path.relpath(full, root))
                 files[rel] = os.path.getsize(full)
         return files, directories
+
+    @staticmethod
+    def _retain_commit_stage(job: Job, stage: str) -> None:
+        # The recovery journal keeps ownership; terminal cleanup must no longer
+        # treat the retained output as disposable extraction scratch.
+        job.final_destination = stage
+        job.temp_root = None
+        extraction = job.extraction_result
+        if extraction and os.path.normcase(os.path.abspath(extraction.temp_output_dir or "")) == os.path.normcase(os.path.abspath(stage)):
+            extraction.temp_output_dir = ""
 
     def _transfer_to_commit_stage(
         self, job: Job, source: str, stage: str
@@ -2148,6 +2153,8 @@ class Executor:
                         chunk = src.read(COPY_BUFFER_SIZE)
                         if not chunk:
                             break
+                        if copied_bytes + len(chunk) > job.approved_output_bytes:
+                            raise OSError("Commit copy exceeded approved byte quota")
                         written = dst.write(chunk)
                         if written != len(chunk):
                             raise OSError(
@@ -2156,8 +2163,6 @@ class Executor:
                         if expected_crc is not None:
                             checksum = zlib.crc32(chunk, checksum)
                         copied_bytes += len(chunk)
-                        if copied_bytes > job.approved_output_bytes:
-                            raise OSError("Commit copy exceeded approved byte quota")
                 shutil.copystat(src_file, dst_file, follow_symlinks=False)
                 if expected_crc is not None:
                     actual_crc = f"{checksum & 0xFFFFFFFF:08X}"
@@ -2711,6 +2716,25 @@ class Executor:
             if status != windows_adapters.RECYCLE_READY
         ]
         fallback_paths = [volume for volume, _status in fallback_plans]
+        if fallback_paths and not self.config.get("allow_permanent_fallback", False):
+            # The user chose the Recycle Bin policy; silently upgrading to a
+            # permanent delete would betray that choice.  Keep the sources
+            # unless the fallback is explicitly allowed in Settings.
+            job.source_retention_reason = (
+                f"recycle_fallback_disabled:{len(fallback_paths)}"
+            )
+            job.terminal_diagnostics.append(
+                "Recycle Bin fallback is disabled; sources kept: "
+                + "; ".join(fallback_paths[:8])
+            )
+            self._notify_user(
+                job,
+                format_user_message(
+                    "RECYCLE_FALLBACK_DISABLED",
+                    count=len(fallback_paths),
+                ),
+            )
+            return
         deleted, failures = self._delete_sources_permanently(
             job,
             fallback_paths,
@@ -3196,6 +3220,8 @@ class Executor:
         except (TypeError, ValueError):
             expected = 0
         actual = len(job.archive_set.volumes)
+        if actual > 1 and expected <= 0:
+            reasons.append("7z volume count is unverified")
         if expected > 0 and expected != actual:
             reasons.append(f"7z_volumes={expected}, discovered={actual}")
 
@@ -3203,8 +3229,16 @@ class Executor:
         try:
             volume_index = int(raw_index)
         except (TypeError, ValueError):
-            volume_index = 0
-        if volume_index > 0:
+            volume_index = 0 if not raw_index else -1
+        # Split ZIP is opened through its terminal .zip volume, unlike RAR/7z.
+        terminal_zip = (
+            job.archive_set.format_family == "zip_split"
+            and manifest.format.casefold() == "zip"
+            and expected == actual > 1
+            and volume_index == expected - 1
+            and job.archive_set.main_path.casefold().endswith(".zip")
+        )
+        if volume_index < 0 or (volume_index > 0 and not terminal_zip):
             reasons.append(f"7z_volume_index={volume_index}")
 
         if reasons:

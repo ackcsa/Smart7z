@@ -31,55 +31,13 @@ class Scheduler:
     ):
         self._lock = threading.RLock()
         self.config = dict(config)
-        self.recovery_journal = RecoveryJournal(
-            self.config.get("_recovery_journal_path") or None
-        )
-        if not self.recovery_journal.available:
-            detail = self.recovery_journal.load_error or "exclusive lock unavailable"
-            self.recovery_journal.close()
-            raise OSError(
-                "Persistent recovery state is unavailable; another Smart7z "
-                f"instance may still be running: {detail}"
-            )
-        source_conflict_mode = str(
-            self.config.get("_source_conflict_mode", "visible") or "visible"
-        )
-        if source_conflict_mode not in {"visible", "hidden"}:
-            source_conflict_mode = "visible"
-        self.recovery_messages = self.recovery_journal.recover(
-            source_conflict_mode=source_conflict_mode
-        )
-        session_root, session_token = create_owned_session(
-            self.config.get("temp_dir") or tempfile.gettempdir()
-        )
-        self._session_root = session_root
-        self._session_roots: Dict[str, str] = {session_root: session_token}
-        self._session_journal_entries: Dict[str, Optional[str]] = {
-            session_root: self.recovery_journal.register_session(
-                session_root, session_token, os.getpid()
-            )
-        }
-        if self._session_journal_entries[session_root] is None:
-            self.recovery_messages.append(
-                "Session recovery registration failed; legacy marker cleanup remains active"
-            )
-        self.config["_session_root"] = session_root
+        self._session_roots: Dict[str, str] = {}
+        self._session_journal_entries: Dict[str, Optional[str]] = {}
         self.event_cb = event_cb or (lambda *a, **k: None)
         self.cancel_event = threading.Event()
         self.intake_paused = threading.Event()
         self._io_busy = threading.Event()  # set while 7z/transfer owns the slot
         self.processing_enabled = threading.Event()
-
-        self.runner = SevenZipRunner(
-            sevenzip_path, cancel_check=self.cancel_event.is_set
-        )
-        self.executor = Executor(
-            self.runner,
-            self.config,
-            event_cb=self._on_executor_event,
-            nested_submit=self.submit,
-            recovery_journal=self.recovery_journal,
-        )
 
         self.task_queue: queue.Queue = queue.Queue()
         self._deferred_intake = deque()
@@ -110,8 +68,62 @@ class Scheduler:
         self._source_keys: Dict[str, str] = {}
         self._terminal_ids: Set[str] = set()
         self._cancel_requested: Set[str] = set()
+        self._discard_requested: Set[str] = set()
         self._job_batches: Dict[str, str] = {}
         self._closed_nested_batches: Set[str] = set()
+        self._discarded_nested_batches: Set[str] = set()
+
+        self.recovery_journal = RecoveryJournal(
+            self.config.get("_recovery_journal_path") or None
+        )
+        try:
+            if not self.recovery_journal.available:
+                detail = self.recovery_journal.load_error or "exclusive lock unavailable"
+                raise OSError(
+                    "Persistent recovery state is unavailable; another Smart7z "
+                    f"instance may still be running: {detail}"
+                )
+            source_conflict_mode = str(
+                self.config.get("_source_conflict_mode", "visible") or "visible"
+            )
+            if source_conflict_mode not in {"visible", "hidden"}:
+                source_conflict_mode = "visible"
+            self.recovery_messages = self.recovery_journal.recover(
+                source_conflict_mode=source_conflict_mode
+            )
+            session_root, session_token = create_owned_session(
+                self.config.get("temp_dir") or tempfile.gettempdir()
+            )
+            self._session_root = session_root
+            self._session_roots[session_root] = session_token
+            entry = self.recovery_journal.register_session(
+                session_root, session_token, os.getpid()
+            )
+            self._session_journal_entries[session_root] = entry
+            if entry is None:
+                self.recovery_messages.append(
+                    "Session recovery registration failed; legacy marker cleanup remains active"
+                )
+            self.config["_session_root"] = session_root
+            self.runner = SevenZipRunner(
+                sevenzip_path, cancel_check=self.cancel_event.is_set
+            )
+            self.executor = Executor(
+                self.runner,
+                self.config,
+                event_cb=self._on_executor_event,
+                nested_submit=self.submit,
+                recovery_journal=self.recovery_journal,
+            )
+        except Exception:
+            # Stored startup tracebacks can outlive the window's retry attempt.
+            try:
+                self.cleanup_session_roots()
+            except Exception:
+                logger.exception("Could not clean a failed startup session")
+            finally:
+                self.recovery_journal.close()
+            raise
 
     def _on_executor_event(self, event_type, job, *args, **kwargs):
         self.event_cb(event_type, job, *args, **kwargs)
@@ -178,6 +190,7 @@ class Scheduler:
         return changed
 
     def refresh_config(self, config: dict) -> None:
+        """Update defaults without changing policies captured at submission."""
         with self._lock:
             requested = dict(config)
             requested_base = os.path.abspath(
@@ -230,6 +243,8 @@ class Scheduler:
                 batch_id = self._job_batches.get(
                     self.current_job.task_id, self.current_job.task_id
                 )
+            if job.nested_depth > 0 and batch_id in self._discarded_nested_batches:
+                return False
             if job.nested_depth > 0 and batch_id in self._closed_nested_batches:
                 job.record_state(JobState.INTERRUPTED)
                 job.error_category = ErrorCategory.CANCELLED
@@ -340,7 +355,7 @@ class Scheduler:
             return
         if 0 <= candidate_index < len(target.stego_candidates):
             with self._lock:
-                if target.task_id in self._terminal_ids:
+                if target.task_id in self._terminal_ids or target.task_id in self._discard_requested:
                     return
                 target.selected_candidate = target.stego_candidates[candidate_index]
                 target.stego_selection_pending = True
@@ -418,6 +433,77 @@ class Scheduler:
             self.executor.cleanup_job_artifacts(job, terminal=True)
             self.event_cb("job_interrupted", job)
 
+    def discard_remaining(self) -> List[str]:
+        """Remove every non-current task without keeping interrupted rows."""
+        return self._discard_jobs(None)
+
+    def discard_jobs(self, task_ids: Set[str]) -> List[str]:
+        """Remove selected unfinished jobs, cancelling active work safely."""
+        return self._discard_jobs(set(task_ids))
+
+    def _discard_jobs(self, task_ids: Optional[Set[str]]) -> List[str]:
+        with self._lock:
+            current_id = self.current_job.task_id if self.current_job else None
+            discard_current = (
+                current_id is not None
+                and task_ids is not None
+                and current_id in task_ids
+                and current_id not in self._terminal_ids
+            )
+            if current_id is not None and (task_ids is None or discard_current):
+                batch_id = self._job_batches.get(current_id, current_id)
+                self._closed_nested_batches.add(batch_id)
+                self._discarded_nested_batches.add(batch_id)
+            selected = {
+                task_id
+                for task_id in self._jobs
+                if task_id != current_id and task_id not in self._terminal_ids
+                and (task_ids is None or task_id in task_ids)
+            }
+            removed_jobs = [self._jobs[task_id] for task_id in selected]
+            self._discard_requested.update(selected)
+            if discard_current:
+                self._discard_requested.add(current_id)
+                self.cancel_event.set()
+                self.runner.cancel_current()
+            self._drain_queue_locked(selected)
+            self._drain_deferred_locked(selected)
+            for pending in (self.password_pending, self.stego_pending):
+                for task_id in selected:
+                    pending.pop(task_id, None)
+            with self._password_lock:
+                for task_id in selected:
+                    self._manual_passwords.pop(task_id, None)
+            for task_id in selected:
+                self._forget_discarded_job_locked(task_id)
+            active_batches = {
+                batch_id
+                for task_id, batch_id in self._job_batches.items()
+                if task_id not in self._terminal_ids
+            }
+            self._closed_nested_batches.intersection_update(active_batches)
+            self._discarded_nested_batches.intersection_update(active_batches)
+            if task_ids is None:
+                self.processing_enabled.clear()
+        self.executor.retain_nested_batches(active_batches)
+        for job in removed_jobs:
+            self.executor.cleanup_job_artifacts(job, terminal=True)
+        self._disable_processing_when_idle()
+        return [job.task_id for job in removed_jobs] + ([current_id] if discard_current else [])
+
+    def _forget_discarded_job_locked(self, task_id: str) -> None:
+        self._jobs.pop(task_id, None)
+        self._queue_sequence.pop(task_id, None)
+        self._cancel_requested.discard(task_id)
+        self._job_batches.pop(task_id, None)
+        with self._password_lock:
+            self._manual_passwords.pop(task_id, None)
+        for pending in (self.password_pending, self.stego_pending):
+            pending.pop(task_id, None)
+        for source_key, owner_id in list(self._source_keys.items()):
+            if owner_id == task_id:
+                del self._source_keys[source_key]
+
     def clear_finished(self, task_ids: Optional[Set[str]] = None) -> List[str]:
         removed = []
         with self._lock:
@@ -445,6 +531,7 @@ class Scheduler:
                 if task_id not in self._terminal_ids
             }
             self._closed_nested_batches.intersection_update(active_batches)
+            self._discarded_nested_batches.intersection_update(active_batches)
         self.executor.retain_nested_batches(active_batches)
         return removed
 
@@ -455,6 +542,12 @@ class Scheduler:
     def has_job(self, task_id: str) -> bool:
         with self._lock:
             return task_id in self._jobs
+
+    def has_unfinished_jobs(self) -> bool:
+        with self._lock:
+            return self.current_job is not None or any(
+                task_id not in self._terminal_ids for task_id in self._jobs
+            )
 
     def _drain_queue_locked(self, task_ids: Set[str]) -> None:
         retained: List[object] = []
@@ -548,7 +641,10 @@ class Scheduler:
 
             newly_interrupted = False
             with self._lock:
-                if job.task_id in self._terminal_ids:
+                if job.task_id in self._discard_requested:
+                    self._discard_requested.discard(job.task_id)
+                    should_execute = False
+                elif job.task_id in self._terminal_ids:
                     should_execute = False
                     self._cancel_requested.discard(job.task_id)
                 elif not self._running or job.task_id in self._cancel_requested:
@@ -603,48 +699,42 @@ class Scheduler:
                 main_password = None
                 self._io_busy.clear()
 
-            if final_state == JobState.PASSWORD_REQUIRED:
-                job.record_state(JobState.PASSWORD_REQUIRED)
-                with self._lock:
-                    self.password_pending[job.task_id] = job
-                self.event_cb("password_required", job)
-
-            elif final_state == JobState.STEGO_CANDIDATE_REVIEW:
-                job.record_state(JobState.STEGO_CANDIDATE_REVIEW)
-                with self._lock:
-                    self.stego_pending[job.task_id] = job
-                self.event_cb("stego_review_required", job)
-
-            elif final_state == JobState.INTERRUPTED:
-                job.record_state(JobState.INTERRUPTED)
-                self.executor.cleanup_job_artifacts(job, terminal=True)
-                self._finish_job(job)
-                self.event_cb("job_interrupted", job)
-
-            elif final_state == JobState.COMPLETE:
-                self.executor.cleanup_job_artifacts(job, terminal=True)
-                self._finish_job(job)
-                self.event_cb("job_complete", job)
-
-            elif final_state == JobState.PARTIAL_RECOVERY:
-                self.executor.cleanup_job_artifacts(job, terminal=True)
-                self._finish_job(job)
-                self.event_cb("job_partial", job)
-
-            elif final_state == JobState.SKIPPED:
-                self.executor.cleanup_job_artifacts(job, terminal=True)
-                self._finish_job(job)
-                self.event_cb("job_skipped", job)
-
-            else:
-                job.record_state(
-                    final_state if final_state in TERMINAL_STATES else JobState.FAILED
-                )
-                self.executor.cleanup_job_artifacts(job, terminal=True)
-                self._finish_job(job)
-                self.event_cb("job_failed", job)
-
+            # Result publication and discard share one transaction: a cancelled
+            # active job must never reappear as a password/candidate prompt.
             with self._lock:
+                if job.task_id in self._discard_requested:
+                    self.executor.cleanup_job_artifacts(job, terminal=True)
+                    self._forget_discarded_job_locked(job.task_id)
+                    self._discard_requested.discard(job.task_id)
+                    active_batches = {
+                        batch_id
+                        for task_id, batch_id in self._job_batches.items()
+                        if task_id not in self._terminal_ids
+                    }
+                    self._closed_nested_batches.intersection_update(active_batches)
+                    self._discarded_nested_batches.intersection_update(active_batches)
+                    self.executor.retain_nested_batches(active_batches)
+                elif final_state == JobState.PASSWORD_REQUIRED:
+                    job.record_state(JobState.PASSWORD_REQUIRED)
+                    self.password_pending[job.task_id] = job
+                    self.event_cb("password_required", job)
+                elif final_state == JobState.STEGO_CANDIDATE_REVIEW:
+                    job.record_state(JobState.STEGO_CANDIDATE_REVIEW)
+                    self.stego_pending[job.task_id] = job
+                    self.event_cb("stego_review_required", job)
+                else:
+                    job.record_state(
+                        final_state if final_state in TERMINAL_STATES else JobState.FAILED
+                    )
+                    self.executor.cleanup_job_artifacts(job, terminal=True)
+                    self._finish_job(job)
+                    event_type = {
+                        JobState.INTERRUPTED: "job_interrupted",
+                        JobState.COMPLETE: "job_complete",
+                        JobState.PARTIAL_RECOVERY: "job_partial",
+                        JobState.SKIPPED: "job_skipped",
+                    }.get(final_state, "job_failed")
+                    self.event_cb(event_type, job)
                 if self.current_job is job:
                     self.current_job = None
             self.task_queue.task_done()
@@ -745,6 +835,7 @@ class Scheduler:
                 if task_id not in self._terminal_ids
             }
             self._closed_nested_batches.intersection_update(active_batches)
+            self._discarded_nested_batches.intersection_update(active_batches)
         if newly_finished:
             self.executor.retain_nested_batches(active_batches)
 

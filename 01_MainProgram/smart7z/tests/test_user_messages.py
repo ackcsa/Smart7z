@@ -1,7 +1,7 @@
 import ast
-import html
 import string
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 from user_messages import (
@@ -14,7 +14,7 @@ from user_messages import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PACKAGED_MANUAL_PATH = PROJECT_ROOT / "Smart7z-User-Manual.html"
-WORKSPACE_MANUAL_PATH = PROJECT_ROOT.parents[1] / "smart7z_user_manual .html"
+WORKSPACE_MANUAL_PATH = PROJECT_ROOT.parents[1] / "smart7z_user_manual.html"
 MANUAL_PATH = (
     PACKAGED_MANUAL_PATH
     if PACKAGED_MANUAL_PATH.is_file()
@@ -24,7 +24,52 @@ UI_PATH = PROJECT_ROOT / "ui_qt.py"
 EXECUTOR_PATH = PROJECT_ROOT / "executor.py"
 
 
+class ManualContent(HTMLParser):
+    def __init__(self, source):
+        super().__init__(convert_charrefs=True)
+        self.text = []
+        self.codes = []
+        self.anchors = set()
+        self._code = None
+        self._hidden = 0
+        self.feed(source)
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"style", "script"}:
+            self._hidden += 1
+        if self._hidden:
+            return
+        attributes = dict(attrs)
+        if "id" in attributes:
+            self.anchors.add(attributes["id"])
+        if tag == "code":
+            self._code = []
+
+    def handle_endtag(self, tag):
+        if tag in {"style", "script"}:
+            self._hidden = max(0, self._hidden - 1)
+        elif tag == "code" and self._code is not None:
+            self.codes.append("".join(self._code))
+            self._code = None
+
+    def handle_data(self, data):
+        if not self._hidden:
+            self.text.append(data)
+            if self._code is not None:
+                self._code.append(data)
+
+
 class TestUserMessageCatalog(unittest.TestCase):
+    def test_manual_parser_checks_visible_content_despite_editor_attributes(self):
+        content = ManualContent(
+            '<section id="s" data-page-node-id="x">'
+            '<code class="label">CODE</code>A &amp; B</section>'
+            '<!-- FAKE --><script>HIDDEN</script><style>CSS</style>'
+        )
+        self.assertEqual(content.anchors, {"s"})
+        self.assertEqual(content.codes, ["CODE"])
+        self.assertEqual("".join(content.text), "CODEA & B")
+
     def test_abnormal_message_emphasis_is_explicit(self):
         whole_line_codes = {
             code
@@ -43,6 +88,7 @@ class TestUserMessageCatalog(unittest.TestCase):
                 "JOB_FAILED",
                 "ARCHIVE_BLOCKED",
                 "CONFIG_SYNC_FAILED",
+                "CONFIG_APPLY_FAILED",
                 "RECYCLE_FAILED",
                 "RECYCLE_FALLBACK_DELETE_FAILED",
             },
@@ -59,6 +105,7 @@ class TestUserMessageCatalog(unittest.TestCase):
                 "USER_NOTICE",
                 "RECYCLE_FALLBACK_UNAVAILABLE",
                 "RECYCLE_FALLBACK_TOO_LARGE",
+                "RECYCLE_FALLBACK_DISABLED",
             },
         )
         self.assertFalse(whole_line_codes & keyword_codes)
@@ -108,27 +155,29 @@ class TestUserMessageCatalog(unittest.TestCase):
                 self.assertRegex(template.en, r"[A-Za-z]")
 
     def test_manual_contains_every_exact_chinese_and_english_template(self):
-        manual = MANUAL_PATH.read_text(encoding="utf-8")
+        content = ManualContent(MANUAL_PATH.read_text(encoding="utf-8"))
+        manual = "".join(content.text)
         for code, template in USER_MESSAGE_TEMPLATES.items():
             with self.subTest(code=code):
-                self.assertIn(f"<code>{code}</code>", manual)
-                self.assertIn(html.escape(template.zh, quote=False), manual)
-                self.assertIn(html.escape(template.en, quote=False), manual)
+                self.assertIn(code, content.codes)
+                self.assertIn(template.zh, manual, f"Missing Chinese template: {code}")
+                self.assertIn(template.en, manual, f"Missing English template: {code}")
 
     def test_manual_documents_config_commit_and_archive_safety_boundaries(self):
-        manual = MANUAL_PATH.read_text(encoding="utf-8")
+        content = ManualContent(MANUAL_PATH.read_text(encoding="utf-8"))
+        manual = "".join(content.text)
+        self.assertTrue({"options-save", "options-safety"} <= content.anchors)
+        for code in ("max_manifest_entries", "max_output_files", "ARCHIVE_BLOCKED", "7200"):
+            self.assertIn(code, content.codes)
         for expected in (
-            'id="options-save"',
             "不再提供单独的“保存配置”菜单项",
             "正常关闭窗口",
             "取消本次关闭",
+            "即使只是排队或等待也需要关闭确认",
+            "未完成任务需要重新添加",
             "主密码不会落盘",
             "只读取已经提交的配置",
-            'id="options-safety"',
             "正常压缩包不会因名称中含空格、中文、点文件",
-            "<code>max_manifest_entries</code>",
-            "<code>max_output_files</code>",
-            "<code>ARCHIVE_BLOCKED</code>",
             "路径穿越",
             "Windows 保留设备名",
             "NTFS 备用数据流",
@@ -136,7 +185,7 @@ class TestUserMessageCatalog(unittest.TestCase):
             "反向删除条目",
             "Windows 路径冲突",
             "Windows 不兼容路径",
-            "<code>7200</code> 秒（2 小时）",
+            "7200 秒（2 小时）",
             "工具栏不再提供手动暂停接收入口",
             "右键菜单 → 添加右键菜单",
             "界面不再提供状态过滤按钮",
@@ -144,7 +193,7 @@ class TestUserMessageCatalog(unittest.TestCase):
             "取消所有",
         ):
             with self.subTest(expected=expected):
-                self.assertIn(expected, manual)
+                self.assertIn(expected, manual, f"Missing manual text: {expected}")
         self.assertNotIn("可信输入", manual)
         self.assertNotIn("trusted_input", manual)
         self.assertNotIn("暂停输入", manual)

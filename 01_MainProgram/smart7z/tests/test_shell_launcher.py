@@ -85,7 +85,9 @@ internal static class Program
         {
             return 2;
         }
-        File.WriteAllLines(target, args, new UTF8Encoding(false));
+        string staging = target + ".tmp";
+        File.WriteAllLines(staging, args, new UTF8Encoding(false));
+        File.Move(staging, target);
         return 0;
     }
 }
@@ -181,7 +183,9 @@ internal static class Program
 
         archive = self.root / "warm-forward.zip"
         archive.write_bytes(b"payload")
-        state_path = self.root / f"ipc-v{runtime_ipc.IPC_VERSION}.json"
+        user_state = self.root / "user-state"
+        state_path = user_state / "Smart7z" / f"ipc-v{runtime_ipc.IPC_VERSION}.json"
+        environment = {**os.environ, "LOCALAPPDATA": str(user_state)}
         server = runtime_ipc.BoundedIPCServer(App(), port=0, state_path=str(state_path))
         mutex = None
         try:
@@ -197,6 +201,7 @@ internal static class Program
                     "--delete-source",
                     str(archive),
                 ],
+                env=environment,
                 timeout=10,
             )
             self.assertEqual(completed.returncode, 0)

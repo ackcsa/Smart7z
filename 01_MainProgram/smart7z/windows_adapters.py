@@ -70,7 +70,6 @@ _CONTEXT_MENU_SCOPES = (
     r"Software\Classes\*\shell",
     r"Software\Classes\Directory\shell",
 )
-_CONTEXT_MENU_LAUNCHER_NAME = "Smart7zShell.exe"
 
 if sys.platform == 'win32':
     _shell32 = ctypes.WinDLL('shell32', use_last_error=True)
@@ -483,9 +482,10 @@ def build_context_menu_command(cleanup_policy: str = "keep") -> str:
     )
     executable = os.path.abspath(sys.executable)
     if getattr(sys, "frozen", False):
-        launcher = os.path.join(os.path.dirname(executable), _CONTEXT_MENU_LAUNCHER_NAME)
-        if os.path.isfile(launcher):
-            executable = launcher
+        # Always launch the main executable.  Smart7z.exe performs the same
+        # authenticated fast-path forwarding as the optional shell launcher,
+        # and the .NET launcher is known to crash (0xC0000005) on some
+        # Windows builds, which silently swallowed right-click requests.
         prefix = subprocess.list2cmdline(
             [
                 executable,
@@ -733,6 +733,16 @@ def cleanup_owned_session(
                 or os.path.islink(scaffold)
                 or is_reparse_point(scaffold)
             ):
+                return False
+            # Never rely on os.rmdir failing for non-empty directories as a
+            # safety control: newer Windows builds remove non-empty
+            # directories on rmdir/Directory.Delete.  Check emptiness
+            # explicitly so scaffold payloads are always preserved.
+            try:
+                with os.scandir(scaffold) as entries:
+                    if next(entries, None) is not None:
+                        return False
+            except OSError:
                 return False
             try:
                 os.rmdir(scaffold)

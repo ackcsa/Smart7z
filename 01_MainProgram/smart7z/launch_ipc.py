@@ -152,23 +152,13 @@ def parse_launch_args(args) -> ExternalIntakeRequest:
 
 
 def _ipc_state_path() -> str:
-    frozen = bool(getattr(sys, "frozen", False))
-    app_dir = (
-        os.path.dirname(os.path.abspath(sys.executable))
-        if frozen
-        else os.path.dirname(os.path.abspath(__file__))
-    )
-    if not frozen:
-        state_root = os.path.join(app_dir, "resources")
-    elif os.path.isfile(os.path.join(app_dir, "portable.flag")):
-        state_root = app_dir
-    else:
-        base = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or os.environ.get("TMP")
-        if not base:
-            import tempfile
+    # All copies use the same instance lock, so discovery must be copy-independent.
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or os.environ.get("TMP")
+    if not base:
+        import tempfile
 
-            base = tempfile.gettempdir()
-        state_root = os.path.join(os.path.abspath(base), "Smart7z")
+        base = tempfile.gettempdir()
+    state_root = os.path.join(os.path.abspath(base), "Smart7z")
     return os.path.join(state_root, f"ipc-v{IPC_VERSION}.json")
 
 

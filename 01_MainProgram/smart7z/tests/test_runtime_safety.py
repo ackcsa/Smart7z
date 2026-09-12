@@ -14,7 +14,7 @@ import sevenzip
 import stego_candidates
 import windows_adapters
 from config import DEFAULT_CONFIG, save_config
-from executor import Executor
+from executor import Executor, COPY_BUFFER_SIZE
 from models import (
     ArchiveCandidate,
     ArchiveManifest,
@@ -192,6 +192,7 @@ class TestExecutorPasswordsAndMetrics(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             executor = self._executor(temp_dir)
             job = Job(path=os.path.join(temp_dir, "hidden.bin"))
+            Path(job.path).write_bytes(b"x" * 80)
             job.stego_candidates = [
                 ArchiveCandidate(
                     embedded_format="7z",
@@ -209,8 +210,38 @@ class TestExecutorPasswordsAndMetrics(unittest.TestCase):
             ):
                 state = executor._prepare_stego_candidate(job)
 
-            self.assertEqual(state, JobState.STEGO_CANDIDATE_REVIEW)
-            self.assertEqual(len(job.stego_candidates), 1)
+            self.assertIsNone(state)
+            self.assertEqual(job.stego_candidates, [])
+            self.assertTrue(job.stego_scan_complete)
+            self.assertEqual(len(job.stego_ignored_candidates), 1)
+
+    def test_password_book_is_reread_after_reorder_and_external_edit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executor = self._executor(temp_dir)
+            book = Path(temp_dir, "code.txt")
+            book.write_text("first\nsecond\n", encoding="utf-8")
+            self.assertEqual(executor._password_candidates(None, None), [None, "first", "second"])
+            executor._promote_password("second")
+            self.assertEqual(executor._password_candidates(None, None), [None, "second", "first"])
+            self.assertEqual(
+                executor._password_candidates(None, "second", include_no_password=False),
+                ["second", "first"],
+            )
+            book.write_text("edited\nsecond\n", encoding="utf-8")
+            self.assertEqual(executor._password_candidates(None, None), [None, "edited", "second"])
+            self.assertEqual(
+                executor._password_candidates(None, None, include_no_password=False),
+                ["edited", "second"],
+            )
+
+    def test_password_spaces_and_literal_no_password_marker_are_not_normalized(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            executor = self._executor(temp_dir)
+            Path(temp_dir, "code.txt").write_text(" file value \n", encoding="utf-8")
+            self.assertEqual(
+                executor._password_candidates("<NO_PASSWORD>", " session value "),
+                ["<NO_PASSWORD>", " session value ", None, " file value "],
+            )
 
     def test_direct_scan_prefers_steganographier_candidate_over_decoys(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -707,7 +738,7 @@ class TestLogicalArchiveKeys(unittest.TestCase):
 
 
 class TestSchedulerIntakePolicy(unittest.TestCase):
-    def test_submit_freezes_cleanup_policy_before_config_changes(self):
+    def test_config_change_preserves_every_existing_job_cleanup_policy(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             scheduler = Scheduler(
                 "7z.exe",
@@ -717,17 +748,57 @@ class TestSchedulerIntakePolicy(unittest.TestCase):
                 },
             )
             try:
-                job = Job(path=os.path.join(temp_dir, "archive.zip"))
-                self.assertTrue(scheduler.submit(job))
-                scheduler.refresh_config(
-                    {
-                        **_scheduler_config(temp_dir),
-                        "cleanup_policy": CleanupPolicy.KEEP.value,
-                    }
+                jobs = []
+                for policy in CleanupPolicy:
+                    for state in JobState:
+                        job = Job(
+                            path=os.path.join(temp_dir, f"{policy.value}-{state.value}.zip"),
+                            cleanup_policy_snapshot=policy.value,
+                        )
+                        self.assertTrue(scheduler.submit(job))
+                        job.record_state(state)
+                        if job.is_terminal:
+                            scheduler._terminal_ids.add(job.task_id)
+                        if state == JobState.EXTRACTING:
+                            scheduler.current_job = job
+                        jobs.append((job, policy.value))
+
+                for policy in CleanupPolicy:
+                    scheduler.refresh_config(
+                        {**_scheduler_config(temp_dir), "cleanup_policy": policy.value}
+                    )
+                    for job, original_policy in jobs:
+                        with self.subTest(default=policy, state=job.state, policy=original_policy):
+                            self.assertEqual(job.cleanup_policy_snapshot, original_policy)
+                    new_job = Job(path=os.path.join(temp_dir, f"new-{policy.value}.zip"))
+                    self.assertTrue(scheduler.submit(new_job))
+                    self.assertEqual(new_job.cleanup_policy_snapshot, policy.value)
+                    jobs.append((new_job, policy.value))
+            finally:
+                scheduler.stop()
+
+    def test_refresh_preserves_deferred_and_explicit_request_policies(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = {**_scheduler_config(temp_dir), "cleanup_policy": "permanent"}
+            scheduler = Scheduler("7z.exe", config)
+            try:
+                scheduler.pause_intake()
+                explicit = Job(
+                    path=os.path.join(temp_dir, "explicit.zip"),
+                    cleanup_policy_snapshot="keep",
                 )
-                self.assertEqual(
-                    job.cleanup_policy_snapshot, CleanupPolicy.PERMANENT.value
-                )
+                inherited = Job(path=os.path.join(temp_dir, "inherited.zip"))
+                self.assertTrue(scheduler.submit(explicit))
+                self.assertTrue(scheduler.submit(inherited))
+                scheduler.refresh_config({**config, "nested_extraction": False})
+                self.assertEqual(explicit.cleanup_policy_snapshot, "keep")
+                scheduler.refresh_config({**config, "cleanup_policy": "recycle"})
+                added = Job(path=os.path.join(temp_dir, "added.zip"))
+                self.assertTrue(scheduler.submit(added))
+                self.assertEqual(scheduler.resume_intake(), 3)
+                self.assertEqual(explicit.cleanup_policy_snapshot, "keep")
+                self.assertEqual(inherited.cleanup_policy_snapshot, "permanent")
+                self.assertEqual(added.cleanup_policy_snapshot, "recycle")
             finally:
                 scheduler.stop()
 
@@ -960,6 +1031,51 @@ class TestPreflightAndCommit(unittest.TestCase):
             self.assertEqual(job.error_message, "")
             self.assertEqual(Path(destination, "hello.txt").read_bytes(), b"hello")
 
+    def test_commit_copy_never_writes_past_approved_quota(self):
+        # The quota must be checked before the chunk reaches the destination
+        # file, otherwise a failed commit can overshoot the approved byte budget
+        # by a whole copy buffer.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = os.path.join(temp_dir, "source")
+            destination = os.path.join(temp_dir, "destination")
+            os.makedirs(source)
+            os.makedirs(destination)
+            Path(source, "payload.bin").write_bytes(b"q" * (COPY_BUFFER_SIZE + 4096))
+            executor = self.make_executor(
+                extract_to_source=False,
+                target_dir=destination,
+                cleanup_policy=CleanupPolicy.KEEP.value,
+            )
+            job = Job(path=os.path.join(temp_dir, "archive.zip"))
+            job.approved_output_bytes = COPY_BUFFER_SIZE
+            job.approved_file_count = 10
+            with self.assertRaises(OSError) as raised:
+                executor._copy_tree_cancellable(source, destination, job)
+            self.assertIn("approved byte quota", str(raised.exception))
+            written = Path(destination, "payload.bin")
+            self.assertTrue(written.exists())
+            self.assertLessEqual(written.stat().st_size, job.approved_output_bytes)
+
+    def test_commit_copy_still_accepts_exactly_the_approved_quota(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = os.path.join(temp_dir, "source")
+            destination = os.path.join(temp_dir, "destination")
+            os.makedirs(source)
+            os.makedirs(destination)
+            Path(source, "payload.bin").write_bytes(b"q" * COPY_BUFFER_SIZE)
+            executor = self.make_executor(
+                extract_to_source=False,
+                target_dir=destination,
+                cleanup_policy=CleanupPolicy.KEEP.value,
+            )
+            job = Job(path=os.path.join(temp_dir, "archive.zip"))
+            job.approved_output_bytes = COPY_BUFFER_SIZE
+            job.approved_file_count = 10
+            executor._copy_tree_cancellable(source, destination, job)
+            self.assertEqual(
+                Path(destination, "payload.bin").stat().st_size, COPY_BUFFER_SIZE
+            )
+
     def test_incomplete_volume_set_fails_before_candidate_scan(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             first = os.path.join(temp_dir, "archive.001")
@@ -1101,9 +1217,11 @@ class TestPreflightAndCommit(unittest.TestCase):
 
             self.assertEqual(state, JobState.FAILED)
             self.assertTrue(os.path.exists(source))
-            self.assertIsNotNone(job.temp_root)
-            self.assertTrue(os.path.exists(job.temp_root))
+            self.assertIsNone(job.temp_root)
+            self.assertTrue(os.path.isdir(job.final_destination))
             self.assertEqual(job.source_retention_reason, "commit_stage_retained")
+            executor.cleanup_job_artifacts(job)
+            self.assertEqual(Path(job.final_destination, "hello.txt").read_bytes(), b"hello")
 
     def test_cross_volume_crc_mismatch_publishes_partial_and_keeps_archive(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1363,6 +1481,21 @@ class TestCleanupGate(unittest.TestCase):
         self.assertFalse(job.archive_set.cleanup_safe)
         self.assertIn("7z_volumes=2, discovered=3", job.archive_set.cleanup_reason)
 
+    def test_missing_or_invalid_volume_count_never_authorizes_group_cleanup(self):
+        executor = Executor(DummyRunner(), dict(DEFAULT_CONFIG))
+        for value in ("", "unknown", "0", "-1"):
+            with self.subTest(value=value):
+                job = Job(path="archive.zip")
+                job.archive_set = ArchiveSet(
+                    main_path=job.path,
+                    volumes=["archive.z01", job.path],
+                )
+                executor._apply_manifest_volume_info(
+                    job, ArchiveManifest(raw_fields={"Volumes": value})
+                )
+                self.assertFalse(job.archive_set.cleanup_safe)
+                self.assertIn("unverified", job.archive_set.cleanup_reason)
+
     def test_nonzero_manifest_volume_index_disables_source_cleanup(self):
         executor = Executor(DummyRunner(), dict(DEFAULT_CONFIG))
         job = Job(path="archive.002")
@@ -1379,6 +1512,29 @@ class TestCleanupGate(unittest.TestCase):
         self.assertTrue(
             any("cleanup disabled" in item for item in manifest.diagnostics)
         )
+
+    def test_only_matching_split_zip_terminal_index_allows_group_cleanup(self):
+        executor = Executor(DummyRunner(), dict(DEFAULT_CONFIG))
+        for count, index, family, format_name, allowed in (
+            ("2", "1", "zip_split", "zip", True),
+            ("3", "1", "zip_split", "zip", False),
+            ("2", "2", "zip_split", "zip", False),
+            ("2", "1", "numeric", "zip", False),
+            ("2", "1", "zip_split", "rar", False),
+            ("2", "-1", "zip_split", "zip", False),
+            ("2", "invalid", "zip_split", "zip", False),
+        ):
+            with self.subTest(count=count, index=index, family=family, format=format_name):
+                job = Job(path="archive.zip")
+                job.archive_set = ArchiveSet(
+                    main_path=job.path,
+                    volumes=["archive.z01", job.path],
+                    format_family=family,
+                )
+                executor._apply_manifest_volume_info(job, ArchiveManifest(
+                    format=format_name, raw_fields={"Volumes": count, "Volume Index": index},
+                ))
+                self.assertEqual(job.archive_set.cleanup_safe, allowed)
 
     def test_recycle_uses_original_paths_and_stops_after_first_failure(self):
         executor = Executor(DummyRunner(), dict(DEFAULT_CONFIG))
@@ -1527,7 +1683,7 @@ class TestCleanupGate(unittest.TestCase):
         journal.last_error = ""
         executor = Executor(
             DummyRunner(),
-            dict(DEFAULT_CONFIG),
+            {**DEFAULT_CONFIG, "allow_permanent_fallback": True},
             event_cb=lambda *args: events.append(args),
             recovery_journal=journal,
         )
@@ -1617,8 +1773,52 @@ class TestCleanupGate(unittest.TestCase):
             self.assertTrue(all(os.path.exists(volume) for volume in volumes))
             self.assertIn("[RECYCLE_FAILED]", job.user_notices[-1])
 
+    def test_recycle_fallback_disabled_by_default_keeps_sources(self):
+        events = []
+        executor = Executor(
+            DummyRunner(),
+            dict(DEFAULT_CONFIG),
+            event_cb=lambda *args: events.append(args),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            volumes = [os.path.join(temp_dir, f"archive.{index:03d}") for index in (1, 2)]
+            for volume in volumes:
+                Path(volume).write_bytes(b"source")
+            job = self._ready_cleanup_job(executor, volumes)
+            unavailable = windows_adapters.RecycleBinAssessment(
+                windows_adapters.RECYCLE_FALLBACK_UNAVAILABLE
+            )
+
+            with (
+                mock.patch.object(
+                    windows_adapters,
+                    "assess_recycle_bin",
+                    return_value=unavailable,
+                ),
+                mock.patch.object(
+                    windows_adapters, "send_to_recycle_bin"
+                ) as recycle,
+                mock.patch.object(
+                    windows_adapters, "delete_permanently"
+                ) as permanent,
+            ):
+                executor._maybe_cleanup_sources(job)
+
+            recycle.assert_not_called()
+            permanent.assert_not_called()
+            self.assertTrue(all(os.path.exists(volume) for volume in volumes))
+            self.assertIn("recycle_fallback_disabled:2", job.source_retention_reason)
+            self.assertIn("[RECYCLE_FALLBACK_DISABLED]", job.user_notices[-1])
+            self.assertEqual(
+                sum(event[0] == "user_notice" for event in events),
+                1,
+            )
+
     def test_recycle_fallback_delete_failure_restores_unprocessed_volumes(self):
-        executor = Executor(DummyRunner(), dict(DEFAULT_CONFIG))
+        executor = Executor(
+            DummyRunner(),
+            {**DEFAULT_CONFIG, "allow_permanent_fallback": True},
+        )
         with tempfile.TemporaryDirectory() as temp_dir:
             volumes = [os.path.join(temp_dir, f"archive.{index:03d}") for index in (1, 2)]
             for volume in volumes:

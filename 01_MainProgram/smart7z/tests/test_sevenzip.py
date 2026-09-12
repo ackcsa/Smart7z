@@ -280,6 +280,92 @@ Method = AES-256
 
 
 class TestListingBehavior(unittest.TestCase):
+    def test_format_mismatch_header_survives_streaming_but_member_text_is_not_a_header(self):
+        parser = SltStreamParser()
+        parser.feed_bytes(
+            b"Open WARNING: Cannot open the file as [Rar] archive\n"
+            b"Type = zip\n----------\nPath = payload.txt\nSize = 1\n"
+            b"Open WARNING: member text must not replace the header\n"
+        )
+        manifest = parser.finish()
+        self.assertEqual(manifest.raw_fields["Open WARNING"], "Cannot open the file as [Rar] archive")
+        self.assertEqual(manifest.members[0].path, "payload.txt")
+
+    def test_misleading_extension_rechecks_once_and_preserves_recheck_warnings(self):
+        for checked_code in (EXIT_SUCCESS, EXIT_WARNING):
+            with self.subTest(checked_code=checked_code):
+                runner = SevenZipRunner("7z.exe")
+                original = ArchiveManifest(
+                    format="zip", listing_return_code=EXIT_WARNING,
+                    raw_fields={"Open WARNING": "Cannot open the file as [Rar] archive"},
+                    listing_wall_ms=3.0, parse_cpu_ms=1.0, listing_attempts=1,
+                )
+                checked = ArchiveManifest(
+                    format="zip", used_switch="-tzip", listing_return_code=checked_code,
+                    listing_wall_ms=4.0, parse_cpu_ms=2.0, listing_attempts=1,
+                )
+                with (
+                    mock.patch.object(runner, "list", side_effect=[original, checked]) as listing,
+                    mock.patch("sevenzip._targeted_type_switch", return_value="-tzip"),
+                ):
+                    result = runner.list_with_fallback("report.r20", password="test", manifest_entry_limit=19)
+                self.assertIs(result, checked)
+                self.assertEqual(result.listing_return_code, checked_code)
+                self.assertEqual(result.listing_attempts, 2)
+                self.assertEqual(result.listing_wall_ms, 7.0)
+                self.assertEqual(result.parse_cpu_ms, 3.0)
+                self.assertEqual(listing.call_count, 2)
+                self.assertEqual(listing.call_args.kwargs["type_switch"], "-tzip")
+                self.assertEqual(listing.call_args.kwargs["password"], "test")
+                self.assertEqual(listing.call_args.kwargs["manifest_entry_limit"], 19)
+
+    def test_warning_recheck_requires_complete_manifest_and_matching_format_evidence(self):
+        for overrides, switch in (
+            ({"raw_fields": {}}, "-tzip"),
+            ({"summary_mode": True}, "-tzip"),
+            ({"early_abort_reason": "manifest_limit_exceeded"}, "-tzip"),
+            ({}, "-trar"),
+            ({}, ""),
+        ):
+            with self.subTest(overrides=overrides, switch=switch):
+                values = {
+                    "format": "zip", "listing_return_code": EXIT_WARNING,
+                    "raw_fields": {"Open WARNING": "Cannot open the file as [Rar] archive"},
+                }
+                values.update(overrides)
+                original = ArchiveManifest(**values)
+                runner = SevenZipRunner("7z.exe")
+                with (
+                    mock.patch.object(runner, "list", return_value=original) as listing,
+                    mock.patch("sevenzip._targeted_type_switch", return_value=switch),
+                ):
+                    self.assertIs(runner.list_with_fallback("report.r20"), original)
+                self.assertEqual(listing.call_count, 1)
+                self.assertEqual(original.listing_return_code, EXIT_WARNING)
+
+    def test_failed_format_recheck_propagates_without_a_third_attempt(self):
+        runner = SevenZipRunner("7z.exe")
+        original = ArchiveManifest(
+            format="zip", listing_return_code=EXIT_WARNING,
+            raw_fields={"Open WARNING": "Cannot open the file as [Rar] archive"},
+            listing_wall_ms=3.0, parse_cpu_ms=1.0, listing_attempts=1,
+        )
+        failure = SevenZipError(
+            "cancelled", ErrorCategory.CANCELLED,
+            listing_wall_ms=4.0, parse_cpu_ms=2.0, listing_attempts=1,
+        )
+        with (
+            mock.patch.object(runner, "list", side_effect=[original, failure]) as listing,
+            mock.patch("sevenzip._targeted_type_switch", return_value="-tzip"),
+        ):
+            with self.assertRaises(SevenZipError) as raised:
+                runner.list_with_fallback("report.r20")
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(listing.call_count, 2)
+        self.assertEqual(failure.listing_attempts, 2)
+        self.assertEqual(failure.listing_wall_ms, 7.0)
+        self.assertEqual(failure.parse_cpu_ms, 3.0)
+
     @staticmethod
     def _visible_header_encrypted_result():
         return SevenZipResult(

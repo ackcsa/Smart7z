@@ -468,7 +468,8 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
 
         <h3 data-page-node-id="rb1tX3xYfKRlvDLSmBD4m8">第一次启动</h3>
         <ul data-page-node-id="wx3kN9A742RwvhSaLa5Q9H">
-          <li data-page-node-id="mKWVB4Z8ozFUjbkIESELCq">源码版弹“找不到 7z.exe”：装 7-Zip，或放一份 <code data-page-node-id="2cGcljrDZCHBTfeJKmdMYF">7z.exe</code> 到源码根目录，重启程序。</li>
+          <li data-page-node-id="mKWVB4Z8ozFUjbkIESELCq">源码版弹“找不到 7z.exe”：装 7-Zip，或放一份 <code data-page-node-id="2cGcljrDZCHBTfeJKmdMYF">7z.exe</code> 到源码根目录，然后点击“重试启动”。已接收的任务仍保留在窗口中。</li>
+          <li>窗口显示“正在启动”时，后台正在检查恢复状态并准备任务引擎，仍可添加或取消待处理任务。启动受阻时先在“选项”中修正路径等设置，再点击“重试启动”。</li>
           <li data-page-node-id="GYAW3HhEkeX2VHGcDxC7sG">点“开始”报配置保存失败：把目标目录、暂存目录、密码文件指到当前用户可写的位置。安装版查 <code data-page-node-id="Sgq6cBmUTg11xc3liKVEoH">%LOCALAPPDATA%/Smart7z</code>；便携版确认 EXE 目录可写（只读目录无法保存设置）。</li>
           <li data-page-node-id="65o4IsH8KJTZ0KBzRgopmM">随附的 <code data-page-node-id="btshtb9PA6UARuxA1uIOhw">code.txt</code> 是空模板，需要自动试密码就按“一行一个”自己填。覆盖安装、升级不会动你已有的密码本，卸载也会保留。注意这是明文文件，别传到公共渠道。</li>
         </ul>
@@ -553,6 +554,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
         </table>
 
         <p><code>CANCEL_SELECTED</code>：已移除选中的未完成任务；正在执行的选中任务已请求停止。 / Selected unfinished jobs were removed; selected active work was requested to stop. [CANCEL_SELECTED]</p>
+        <p><code>CONFIG_APPLY_FAILED</code>：设置未能保存或应用，已恢复上次设置。 / Settings could not be saved or applied; previous settings were restored. [CONFIG_APPLY_FAILED]。常用选项自动保存失败时，状态栏和运行日志也会提示，不会无声恢复控件。</p>
         <h3 data-page-node-id="g7CDsAQQmOODQF8hhBbZZ4">需要处理的结果</h3>
         <table data-page-node-id="W0wMm9j4nhEviB7ynlCEuI">
           <thead data-page-node-id="gra0DRSZ5smORWPIK9TYF2"><tr data-page-node-id="XEUmo06YS2L3ldpkudPVCd"><th data-page-node-id="dULCUxvCeKXA41qaCoSfWL">代码</th><th data-page-node-id="trIiwWC3nV12vMkL5HIrcE">界面显示</th><th data-page-node-id="rakP9iB7VxEsq3qzrRnADJ">怎么处理</th></tr></thead>
@@ -605,8 +607,8 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
               <tr data-page-node-id="IcPJbaPutNLGc5qeo8kB4K"><td data-page-node-id="sYZKHbShPxhXmMkTW2RJyx">只修改窗口控件</td><td data-page-node-id="btweW3UfsXERtJhhaQYqKo">部分控件不会在每次点击后立即写盘，但通过当前窗口新添加文件或启动文件夹扫描时，“清理策略”和扫描模式等入队参数可能已经被记录。希望整批一致时，应先设置选项，再添加输入。</td></tr>
               <tr data-page-node-id="x9Cpa1NHIHHqC8NkmXR8NB"><td data-page-node-id="IU37FD0ggzFqfvV4Bj2lb6">点击“开始”</td><td data-page-node-id="c0CrZGHMPoetinI0fevizL">先自动保存并应用，再启动队列。保存或应用失败时，控件恢复到上一次已提交的配置，队列不会启动。</td></tr>
               <tr data-page-node-id="0j84yFhhExnAVE8HrDbDWY"><td data-page-node-id="zfDK3xiN98are0vkUYBibj">正常关闭窗口</td><td data-page-node-id="nxiDFg4vM4H7yJwnV41zIh">关闭流程开始前自动保存当前设置。保存失败时显示错误、恢复上一次已提交的配置并取消本次关闭，避免无提示丢失修改；再次关闭会保存恢复后的配置。</td></tr>
-              <tr data-page-node-id="Z46NoAcTQZwnovVvw5GVFu"><td data-page-node-id="3FbwXVQQbS26zdcUwm6fZm">正在处理的任务</td><td data-page-node-id="srwFLMPQVylVecdrUGEqym">任务启动时会取得执行配置快照，不会半程切换输出目录或暂存模式。清理策略是单独记录的，不受这条快照规则保护；修改并应用后，仍可能更新正在处理的任务。不要在处理中把“保留”改为删除类策略，除非确定要改变源包的处理方式。</td></tr>
-              <tr data-page-node-id="zjuRqg876KeQkwuyLljiUP"><td data-page-node-id="L7YB7rGl43a1xBabAvPWWu">未开始的任务</td><td data-page-node-id="5PWMFWEhtiQjmiyVW5fyeC">点击“开始”保存设置后，队列中尚未开始的任务会采用新的普通执行设置；中途修改的清理策略也会立即更新到所有未终态任务并刷新表格显示。已完成、失败或已中断的历史任务保留结束时的策略不变。</td></tr>
+              <tr data-page-node-id="Z46NoAcTQZwnovVvw5GVFu"><td data-page-node-id="3FbwXVQQbS26zdcUwm6fZm">正在处理的任务</td><td data-page-node-id="srwFLMPQVylVecdrUGEqym">任务启动时会取得执行配置快照，不会半程切换输出目录或暂存模式。清理策略更早在入队时就已固定；处理中修改任何设置，都不会改变该任务的源包处理方式。</td></tr>
+              <tr data-page-node-id="zjuRqg876KeQkwuyLljiUP"><td data-page-node-id="L7YB7rGl43a1xBabAvPWWu">未开始的任务</td><td data-page-node-id="5PWMFWEhtiQjmiyVW5fyeC">点击“开始”保存设置后，队列中尚未开始的任务会采用新的普通执行设置，但清理策略仍使用入队时的值。切换清理策略只影响之后新增的任务，已有排队、待接纳、等待输入和历史任务均不改变。</td></tr>
               <tr data-page-node-id="9DY5sngRwtOpS2pJAEkNQy"><td data-page-node-id="pgEPlcu6PpiUVzFRPlMNx0">命令行、右键菜单或第二个进程转交的路径</td><td data-page-node-id="agwkXImRopO97ObmymEoT1">只读取已经提交的配置，不读取当前窗口里尚未通过“开始”提交的控件值。正常关闭时保存的设置会在下次启动后生效。清理策略和“解压到此文件夹”仍以该次外部请求的明确参数为准；未指定清理策略时使用“保留”。</td></tr>
             </tbody>
           </table>
@@ -702,8 +704,8 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
       <section id="workflow-normal" data-page-node-id="eS5tysex2ihhhC6E661fC2">
         <h2 data-page-node-id="acpqsLlqsWzwFwnhR4LUJ5">普通解压</h2>
         <ol class="step-list" data-page-node-id="XIQe9s4Qzf43BpdO23IhBN">
-          <li data-page-node-id="Rx1CyDlDoTUfbtYV0Zv8Xf">“添加文件”或拖拽加入 .7z / .zip / .rar / .tar 等文件。</li>
-          <li data-page-node-id="KtTJDcMafkAbWZ8d5CnBDg">确认清理策略。不确定就选“保留”。</li>
+          <li data-page-node-id="Rx1CyDlDoTUfbtYV0Zv8Xf">先确认清理策略。不确定就选“保留”。</li>
+          <li data-page-node-id="KtTJDcMafkAbWZ8d5CnBDg">“添加文件”或拖拽加入 .7z / .zip / .rar / .tar 等文件；任务记住此时的清理策略。</li>
           <li data-page-node-id="omL8pZRk5azoJkvnzMFKTj">点“开始”。程序保存设置，逐个处理队列。</li>
           <li data-page-node-id="oB5n58aYIn5YZKj0AVGfto">每个任务：识别结构和分卷 → 读清单 → 查空间和路径安全 → 解压 → 核对文件、目录和大小。</li>
           <li data-page-node-id="Ho7NYyffrpo4bkTCd4yQle">状态变 COMPLETE：输出已写入最终位置并通过复查。变 PARTIAL_RECOVERY：只保留可恢复输出，源压缩包不动。</li>
@@ -747,7 +749,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
           <li data-page-node-id="aNHSXjzORojwe8jPxKZpWl">已确认加密的包在解压阶段不会再做必然失败的无密码尝试；列清单时某密码已解锁文件头的，解压直接先用它。</li>
           <li data-page-node-id="E2HIgkUFgBFBTin19QZCgK">手动提交或跳过后，输入框立即清空、提示区收起。点“跳过”任务标记为 SKIPPED，源文件不清理。</li>
         </ul>
-        <p class="small" data-page-node-id="3BScLBAmO0TjNxTYz66M72">密码文件限制：超过 4 MiB 整份忽略；最多用前 10,000 个候选；单行超 4,096 字符的候选忽略。</p>
+        <p class="small" data-page-node-id="3BScLBAmO0TjNxTYz66M72">密码文件限制：超过 4 MiB 整份忽略且不回写；最多用前 10,000 个候选；单行超 4,096 字符的候选忽略。这些候选限制不会截断原密码本。首尾空格属于密码内容，不会自动去除。读取失败、无法保留原编码或回写前检测到外部修改时，原文件保持不变，成功密码仍可在本次会话中优先使用。</p>
         <a class="toplink" href="#top" data-page-node-id="pOi2ORw08tXBzy4OCDEhqT">返回顶部</a>
       </section>
 
@@ -856,7 +858,7 @@ python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
             <tr data-page-node-id="Jx1T8GCGboHRdUs8SwX1B7"><td data-page-node-id="9yHIND6wnjY0N5pzkNz5y1">permanent / 永久删除<span class="tag danger" data-page-node-id="PRlmNDi12y3UKxHoQo2IFM">不可恢复</span></td><td data-page-node-id="YIvZdTbVa1wAtQLwiD5YMr">成功后再次核对源文件身份（设备号、文件标识、大小、修改时间），先记恢复日志，再移入同盘隐藏暂存目录并永久删除。</td><td data-page-node-id="2XkS7PH8ewYrk2GlW5OG24">空间紧张，且文件已有备份或可以重新获取。</td></tr>
           </tbody>
         </table>
-        <p data-page-node-id="3oQUBrB4NQ5dmLKB5Lo280">普通命令行和第二个实例默认 keep；指定 <code data-page-node-id="oy8Qzspda5WY1aM9Ql4EbN">--delete-source</code> 或选右键“并删除”才用 permanent。界面中添加的任务记住入队时的清理策略；中途改选项会立即更新到所有未终态任务，已完成的历史任务保持原值。</p>
+        <p data-page-node-id="3oQUBrB4NQ5dmLKB5Lo280">普通命令行和第二个实例默认 keep；指定 <code data-page-node-id="oy8Qzspda5WY1aM9Ql4EbN">--delete-source</code> 或选右键“并删除”才用 permanent。任务的清理策略在入队时固定；中途改选项只影响之后新增的任务，不改变已有排队、等待输入或执行中的任务，也不覆盖外部请求明确指定的策略。</p>
 
         <h3 data-page-node-id="Ztbi19ZEVL7HxtQIPmjCXs">“回收站”策略怎么决定删除方式</h3>
         <p data-page-node-id="tNhHqMRjulU9Ka9En79TuB">清理一组分卷前，程序先确认所有源文件仍在原处，再按卷 GUID 读取当前用户的回收站设置（NukeOnDelete 和 MaxCapacity）并核对每个文件大小。任何一项读不清或源文件缺失，整组清理停止。</p>
@@ -947,7 +949,8 @@ python smart7z.py -- --queue</code></pre>
 
         <section id="single-instance" data-page-node-id="sDOyTJ0y7OU85M3KCzocBd">
           <h3 data-page-node-id="WWfP5yXgh70LRA0zQr2fZy">单实例</h3>
-          <p data-page-node-id="dX3i2WcIc6SX5HSIHxkBnz">程序同时只允许一个窗口。再启动时，新进程通过本机 IPC 把路径和参数转给现有窗口后自己退出。资源管理器多选文件右键时，Windows 可能同时拉起几个短命辅助进程——它们会排队串行转交到同一个窗口，不会开出多套队列，也不会因恢复日志锁冲突失败。</p>
+          <p data-page-node-id="dX3i2WcIc6SX5HSIHxkBnz">当前用户登录会话内，安装版、便携版和源码版共用一个窗口及队列。再启动时，新进程通过本机 IPC 把路径和参数转给现有窗口后退出；不带路径时激活现有窗口。本版本没有“允许多窗口”设置。</p>
+          <p>各副本通过 <code>%LOCALAPPDATA%/Smart7z/ipc-v3.json</code> 查找已有窗口。这里只有连接信息，各副本的配置、密码本和恢复日志不会合并；任务由已经打开的窗口处理，清理策略等明确参数仍以该次请求为准。升级前先关闭旧版本窗口，避免旧便携版仍使用自身目录中的连接信息。</p>
           <p class="small" data-page-node-id="10lIfG5iaOa7SBG3m0vdef">转发结果四种：accepted（已接收，新进程退出）、rejected（队列满或正在关闭；确定失败以非零码退出）、indeterminate（到达但无确认，先查现有窗口队列再决定重试）、unavailable（找不到现有实例，最多等 15 秒再接管，不会开第二个调度器）。</p>
         </section>
 
@@ -962,6 +965,7 @@ python smart7z.py -- --queue</code></pre>
             </tbody>
           </table>
           <p data-page-node-id="Uk96IBACHPUFLJPdMlUHC5">两项都自动开始处理。右键目录时先扫描再逐项入队。</p>
+          <p>安装版升级会更新属于本安装目录的旧主程序或 Smart7zShell.exe 菜单命令。卸载只移除本安装目录拥有的菜单；已由其他副本重新注册的入口保留。手动执行“移除右键菜单”则是主动移除当前 Smart7z 菜单。</p>
 
           <h4 data-page-node-id="ctL1XqD0ziVyM4ulErkDZQ">右键窗口何时自动关闭</h4>
           <p data-page-node-id="AQksdpvHfe4ubF7Lm71Wig">只有“最初由右键菜单创建”的独立窗口才有资格自动关闭：所有任务无异常完成、无提示、扫描和待接纳全部结束、无密码或候选确认挂起时，按正常流程保存配置并退出。以下任一情况窗口保留：窗口原本是普通方式打开的；右键窗口后来又被双击激活；出现失败、部分恢复、中断、跳过、需密码、候选复核、扫描失败、未接纳请求或程序异常；没发现任何任务。框选多个压缩包时，后续右键请求会重置关闭检查的等待，避免第一个小包先完成就关窗漏掉后面的。</p>
@@ -982,7 +986,7 @@ python smart7z.py -- --queue</code></pre>
             <tr><td>取消选中</td><td>移除选中的未完成任务，包括等待密码或候选选择的任务；活动任务先请求安全停止。未选中的任务和已结束的历史行保留。</td><td>取消本身不删除源文件。</td><td>迟到的后台事件不会让已移除任务重新出现；已完成的输出不撤回。</td></tr>
             <tr data-page-node-id="GJbZEKWUbiAUpqngv8Asi8"><td data-page-node-id="4zWxndpxvRjUkoYjrO2ZEw">取消当前</td><td data-page-node-id="1gMqU1YBeDoB7dEMLHEjww">通知当前任务停止，结束正在运行的 7-Zip 进程。</td><td data-page-node-id="lvmcmgX8rdbGHVsne7eiy2">保留。</td><td data-page-node-id="CSqv7r5wXU3a8Y5WAzU9mQ">未移到最终位置的临时输出会清理；已完成的输出不撤回。</td></tr>
             <tr data-page-node-id="LXPnIzMNHQ7xRkaQpCIIyR"><td data-page-node-id="Wbk0LpAUnydZEDw4XEDjjO">取消所有</td><td data-page-node-id="8l3uQcUgyKRZlX2quB8A0s">当前任务继续；其余未完成任务直接从任务表和调度器移除（不生成“已中断”历史行），同时停止目录扫描、清空待接纳请求。</td><td data-page-node-id="8vfKAVOABrCiCwTMA8GwDT">被移除任务保留源文件；当前任务仍按其策略处理。</td><td data-page-node-id="sHVfMOxvfG0YItMIQaDJpJ">旧扫描迟到的结果被丢弃，可立即重新扫描。</td></tr>
-            <tr data-page-node-id="o8OkFijFLqdxBkhi17BDdP"><td data-page-node-id="n6CV43vM4XnEWf3UCRCbx6">关闭窗口</td><td data-page-node-id="BtWbDlWLkv1VrgY9IKtp4g">停止接收新请求，关单实例通信，后台等待调度器和工作线程退出。超过约 5 秒标题显示“安全停止中”，不会强行丢弃状态。</td><td data-page-node-id="Dz68JDVKNwc95qYyQUEbVM">已完成任务按所选策略处理；其他任务保留源文件。</td><td data-page-node-id="oSMLidtCxpe3FkJ2ND20DF">所有扫描线程共用约 1 秒等待时间。</td></tr>
+            <tr data-page-node-id="o8OkFijFLqdxBkhi17BDdP"><td data-page-node-id="n6CV43vM4XnEWf3UCRCbx6">关闭窗口</td><td data-page-node-id="BtWbDlWLkv1VrgY9IKtp4g">只要还有未完成任务或扫描，即使只是排队或等待也需要关闭确认，默认选择“否”；等待密码、候选确认、空间以及启动期间已接收的输入都包括在内。确认退出后停止接收新请求，请求调度器、扫描和初始化线程退出。</td><td data-page-node-id="Dz68JDVKNwc95qYyQUEbVM">关闭不会撤销已完成的清理；未完成任务按安全中断流程保留源文件。下次运行时，未完成任务需要重新添加。</td><td data-page-node-id="oSMLidtCxpe3FkJ2ND20DF">取消关闭不会停止任务或扫描；只有已结束记录时不额外确认。后台尚未停止时保留实例锁，所有扫描线程共用约 1 秒等待时间，调度器可能需要更久。</td></tr>
             <tr data-page-node-id="uoWIG3SvF2UgXpMlp15UCk"><td data-page-node-id="mGIrgqE4seZGCSPqai8UYP">右键任务自动关闭</td><td data-page-node-id="5n38QXVsSm9HyMG7AksPEA">仅限右键菜单独立创建且未被再次激活的窗口；全部任务无异常完成后按正常流程退出。</td><td data-page-node-id="Jwr5I1GmbsiWq8AxsJvjJy">按每个任务入队时的右键策略处理。</td><td data-page-node-id="LDyH3neiYnxPkE7WTGMrDR">任一异常、提示或恢复复核都会保留窗口。</td></tr>
           </tbody>
         </table>
@@ -995,9 +999,9 @@ python smart7z.py -- --queue</code></pre>
         <table data-page-node-id="zEji1a7R7lMy7C5a51dcRS">
           <thead data-page-node-id="TGsPm3skVTP0ODGOibG9x6"><tr data-page-node-id="7MDD3XDUxSLWeXZRfOmaxZ"><th data-page-node-id="GJ2Ql0QqDiZoZIBYETXrJD">现象</th><th data-page-node-id="2ETUbmjVdOoQeXP2viYRX6">可能原因</th><th data-page-node-id="XAncKbxuto0JmIN9dbQsMU">处理</th></tr></thead>
           <tbody data-page-node-id="SSJb7jgXaDdg5c1UG3PUmg">
-            <tr data-page-node-id="Ozs7hKeS3ga8y6LY4OnaKo"><td data-page-node-id="5q5Py02vaZWXgAtiJfVTrH">启动时报找不到 7z.exe</td><td data-page-node-id="BVl7pYPLAwcixO5fdSvfaC">配置路径无效，系统标准路径也找不到 7-Zip。</td><td data-page-node-id="b0O7v6EC8zil0nHSudDbvf">装 7-Zip，或把 <code data-page-node-id="NaWBMHZbnfSPgw0zSdd1RM">7z.exe</code> 放进程序目录，重启。</td></tr>
+            <tr data-page-node-id="Ozs7hKeS3ga8y6LY4OnaKo"><td data-page-node-id="5q5Py02vaZWXgAtiJfVTrH">启动时报找不到 7z.exe</td><td data-page-node-id="BVl7pYPLAwcixO5fdSvfaC">配置路径无效，系统标准路径也找不到 7-Zip。</td><td data-page-node-id="b0O7v6EC8zil0nHSudDbvf">装 7-Zip，或把 <code data-page-node-id="NaWBMHZbnfSPgw0zSdd1RM">7z.exe</code> 放进程序目录，再点击“重试启动”。</td></tr>
             <tr data-page-node-id="s5zg624rHShVCcfMITHC7E"><td data-page-node-id="WFkznC2iZo5YV15TfeHJEQ">点“开始”后提示配置保存失败</td><td data-page-node-id="6pYDiFky0cC3sFYzo5rwsa">目标目录、暂存目录或密码文件路径无效；便携模式下 EXE 目录只读。</td><td data-page-node-id="dXKfLYFN5nlofXqPIUsKQi">改用可写目录。安装版查 <code data-page-node-id="OKfCMy4bDO1Ht5J6u8HaCz">%LOCALAPPDATA%/Smart7z</code>；便携版查 EXE 目录或移除 <code data-page-node-id="sfoOzZTKQLnvsvsIOAHh75">portable.flag</code>。</td></tr>
-            <tr data-page-node-id="dEDjzzT2MXPb8WCCNMWKP1"><td data-page-node-id="MwXfWopjs0BgUnLCwrBtxU">任务一直显示 SPACE_WAIT</td><td data-page-node-id="oxJpVF53lcpqJzBnBsS2a8">目标盘或暂存盘空间不足。</td><td data-page-node-id="9UGIw1KuSLuG0BPFTGiDF6">释放空间、换目标目录，或取消任务。</td></tr>
+            <tr data-page-node-id="dEDjzzT2MXPb8WCCNMWKP1"><td data-page-node-id="MwXfWopjs0BgUnLCwrBtxU">任务一直显示 SPACE_WAIT</td><td data-page-node-id="oxJpVF53lcpqJzBnBsS2a8">目标盘或暂存盘空间不足。</td><td data-page-node-id="9UGIw1KuSLuG0BPFTGiDF6">释放相应磁盘空间；需要换目录时，先取消任务，修改设置后重新添加。正在处理的任务不会半程切换目录。</td></tr>
             <tr data-page-node-id="BoxuJ0yBtoNoLXo5VsVkN7"><td data-page-node-id="yL2BBfXK28ZK70qqgJ7J4R">需要密码</td><td data-page-node-id="7eGaiHUH5RM0IHWbtZPFPV">手动输入、本批次成功密码和密码文件候选都失败。</td><td data-page-node-id="5M07u6gQi8SrLuDoRzyUHe">提示区输入正确密码；不确定就跳过。</td></tr>
             <tr data-page-node-id="cM2FxwrL6QN9wifLJiTjcv"><td data-page-node-id="RFrPKCJHepCRQICyx6f3ng">任务显示“部分恢复”</td><td data-page-node-id="8EunL3AuM2FDhxGiVqtKAO">7-Zip 返回警告、CRC32 不一致，或输出移动和校验未完全成功，但仍有文件可保留。</td><td data-page-node-id="pEtNHqQXpDJentyBBWq0wH">检查“非完全恢复”目录；这类任务不清理源文件。</td></tr>
             <tr data-page-node-id="SHXveBoLzAHWvfYHO8lrFO"><td data-page-node-id="nnJZYpC3eonQe3jhYlRivX">扫描文件夹没发现隐写 MP4/MKV 里的内嵌 ZIP</td><td data-page-node-id="nhsgs8GtgcBKCEBBFATJnB">容器原子、SeekHead、附件元数据或 ZIP 边界无法确认，或布局不在支持列表。</td><td data-page-node-id="81HWWKMPu0j3zBtHL7Rvz4">兼容模式下确认文件是否由支持的布局创建；未知布局改深度扫描，或“添加文件”直接加。</td></tr>
@@ -1111,8 +1115,8 @@ python smart7z.py -- --queue</code></pre>
             <tr data-page-node-id="CKeSu56ygwhagctcLC6DQT"><td data-page-node-id="1U5NH1Y0si1ES9TuR9WMTX">清理源文件</td><td data-page-node-id="xH5suMGND6dZ9L2jEpmmS4">确认输出完整成功后，按任务策略保留、回收或永久删除源压缩包。</td></tr>
           </tbody>
         </table>
-        <p class="small" data-page-node-id="lFGHebGeRnEx8gdM4OiDPH">仓库的 <code data-page-node-id="DkDINULzmAqmb38ePgqqCN">README.md</code> 是阅读入口；程序模块、配置项、测试与发布检查已集中到 <code>docs/MAINTENANCE.md</code>，版本变更见 <code data-page-node-id="aCBnrg6po6ktZ0SHHgHJmq">CHANGELOG.md</code>。这些是仓库路径，安装版或便携版不一定附带维护文档。</p>
-        <p class="small">截至 2026-09-10，1.0.3 已发布，新的启动测量仍在进行。工作树文档修改不会自动更新已发布包中的手册副本；本次整理不代表冷启动优化已得到验证。</p>
+        <p class="small" data-page-node-id="lFGHebGeRnEx8gdM4OiDPH">仓库的 <code data-page-node-id="DkDINULzmAqmb38ePgqqCN">README.md</code> 是阅读入口；程序模块、配置项、测试与发布检查集中到 <code>MAINTENANCE.md</code>。版本变更见 <code data-page-node-id="aCBnrg6po6ktZ0SHHgHJmq">CHANGELOG.md</code>，三种发行包均附带该文件；维护指南只在仓库中提供。</p>
+        <p class="small">本手册适用于 1.0.4。正式发行状态与附件以 <a href="https://github.com/ackcsa/Smart7z/releases">GitHub Releases</a> 为准；工作树修改不会自动更新旧包内的手册。源码暖启动测量不代表成品冷启动提速。</p>
         <a class="toplink" href="#top" data-page-node-id="KuF5UOlm82lbAHbVK0TuRK">返回顶部</a>
       </section>
     </main>

@@ -234,6 +234,10 @@ class Job:
     archive_set: Optional[ArchiveSet] = None
     manifest: Optional[ArchiveManifest] = None
     stego_candidates: List[ArchiveCandidate] = field(default_factory=list)
+    stego_scan_complete: bool = False
+    stego_triage_decision: str = ""
+    stego_recommended_index: Optional[int] = None
+    stego_ignored_candidates: List[ArchiveCandidate] = field(default_factory=list)
     selected_candidate: Optional[ArchiveCandidate] = None
     # A reviewed candidate is carved by the serial worker, never by the UI
     # callback that records the user's selection.

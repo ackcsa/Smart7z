@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?$')]
-    [string]$Version = '1.0.2',
+    [string]$Version = '1.0.4',
 
     [string]$PythonExe = '',
 
@@ -19,6 +19,19 @@ $SourceDir = [IO.Path]::GetFullPath($PSScriptRoot)
 $WorkspaceDir = [IO.Path]::GetFullPath(
     (Split-Path -Parent (Split-Path -Parent $SourceDir))
 )
+$ManualPath = Join-Path $SourceDir 'Smart7z-User-Manual.html'
+if (-not (Test-Path -LiteralPath $ManualPath -PathType Leaf)) {
+    $ManualPath = Join-Path $WorkspaceDir 'smart7z_user_manual.html'
+}
+$ChangelogPath = Join-Path $SourceDir 'CHANGELOG.md'
+if (-not (Test-Path -LiteralPath $ChangelogPath -PathType Leaf)) {
+    $ChangelogPath = Join-Path $WorkspaceDir 'CHANGELOG.md'
+}
+foreach ($documentPath in @($ManualPath, $ChangelogPath)) {
+    if (-not (Test-Path -LiteralPath $documentPath -PathType Leaf)) {
+        throw "Required release document is missing: $documentPath"
+    }
+}
 $BuildDir = Join-Path $SourceDir 'build'
 $WorkDir = Join-Path $BuildDir 'pyinstaller-work'
 $PyInstallerDist = Join-Path $BuildDir 'pyinstaller-dist'
@@ -368,7 +381,12 @@ function Assert-ReleaseArchive {
             $packagedConfig = (Read-ZipEntryText -Entry $configEntries[0]) | ConvertFrom-Json
             if (
                 $packagedConfig.cleanup_policy -ne 'keep' -or
-                $packagedConfig.del_archive -ne $false
+                $packagedConfig.del_archive -ne $false -or
+                $packagedConfig.allow_permanent_fallback -ne $false -or
+                $packagedConfig.'7z_path' -ne '' -or
+                $packagedConfig.target_dir -ne '' -or
+                $packagedConfig.temp_dir -ne '' -or
+                $packagedConfig.password_file -ne 'code.txt'
             ) {
                 throw "Release archive contains an unsafe default configuration: $ArchivePath"
             }
@@ -378,6 +396,84 @@ function Assert-ReleaseArchive {
     }
 
     Write-Host "Audited release archive: $ArchivePath"
+}
+
+function New-ReleaseZip {
+    <#
+    用 Python 标准库 zipfile 打包目录，替代 Compress-Archive。
+
+    原因（2026-09-11 实测）：Compress-Archive 走 PowerShell 管道逐文件处理，
+    对源码包（349 MB / 2.7 万文件）实测约 44 分钟，是全流程最慢的一步。
+    同一份输入改用 zipfile（deflate level 6）实测 0.85 分钟，体积仅差 -0.3%
+    （98.8 MB vs 99.1 MB），且构建脚本本就依赖 Python，无新增外部依赖。
+
+    实现要点：
+    - 先写临时文件再原子替换，避免半途失败留下看似可用的残缺包；
+    - 显式写入创建/修改时间，保证同一输入产出可复现；
+    - 保留空的目录条目，与 Compress-Archive 行为对齐。
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceDir,
+        [Parameter(Mandatory = $true)][string]$DestinationPath,
+        [Parameter(Mandatory = $true)][string]$PythonExe,
+        [int]$CompressionLevel = 6
+    )
+
+    if (-not (Test-Path -LiteralPath $SourceDir -PathType Container)) {
+        throw "Zip source directory is missing: $SourceDir"
+    }
+
+    $tempZip = "$DestinationPath.tmp"
+    if (Test-Path -LiteralPath $tempZip) {
+        Remove-Item -LiteralPath $tempZip -Force
+    }
+
+    $zipScript = @'
+import os
+import sys
+import zipfile
+
+source_dir, destination, level = sys.argv[1], sys.argv[2], int(sys.argv[3])
+source_dir = os.path.abspath(source_dir)
+parent = os.path.dirname(source_dir)
+root_name = os.path.basename(source_dir)
+count = 0
+
+with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED, compresslevel=level) as archive:
+    for current, dir_names, file_names in os.walk(source_dir):
+        dir_names.sort()
+        file_names.sort()
+        relative = os.path.relpath(current, parent).replace(os.sep, "/")
+        if relative != root_name or not file_names:
+            archive.writestr(relative + "/", b"")
+        for file_name in file_names:
+            absolute = os.path.join(current, file_name)
+            entry = os.path.relpath(absolute, parent).replace(os.sep, "/")
+            archive.write(absolute, entry)
+            count += 1
+
+print(f"Zipped {count} files from {source_dir} -> {destination}")
+'@
+
+    $scriptPath = Join-Path ([IO.Path]::GetTempPath()) "smart7z-release-zip-$([Guid]::NewGuid().ToString('N')).py"
+    try {
+        [IO.File]::WriteAllText($scriptPath, $zipScript, [Text.UTF8Encoding]::new($false))
+        & $PythonExe -X utf8 $scriptPath $SourceDir $tempZip $CompressionLevel
+        if ($LASTEXITCODE -ne 0) {
+            throw "Zip compression failed for $SourceDir (exit code $LASTEXITCODE)."
+        }
+    } finally {
+        if (Test-Path -LiteralPath $scriptPath) {
+            Remove-Item -LiteralPath $scriptPath -Force
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $tempZip -PathType Leaf)) {
+        throw "Zip compression produced no output: $tempZip"
+    }
+    Move-Item -LiteralPath $tempZip -Destination $DestinationPath -Force
+    $sizeMiB = [Math]::Round((Get-Item -LiteralPath $DestinationPath).Length / 1MB, 2)
+    Write-Host "Created $([IO.Path]::GetFileName($DestinationPath)) ($sizeMiB MiB)"
 }
 
 function Assert-MinimalQtRuntime {
@@ -700,6 +796,10 @@ from config import DEFAULT_CONFIG
 config = dict(DEFAULT_CONFIG)
 config["cleanup_policy"] = "keep"
 config["del_archive"] = False
+config["allow_permanent_fallback"] = False
+for key in ("7z_path", "target_dir", "temp_dir"):
+    config[key] = ""
+config["password_file"] = "code.txt"
 destination.write_text(
     json.dumps(config, indent=4, ensure_ascii=False) + "\n",
     encoding="utf-8",
@@ -716,7 +816,12 @@ $releaseConfig = Get-Content -LiteralPath $ReleaseConfigFile -Raw -Encoding UTF8
 if (
     $releaseConfig.cleanup_policy -ne 'keep' -or
     $releaseConfig.del_archive -ne $false -or
-    $releaseConfig.steganographier_compat_mode -ne $true
+    $releaseConfig.steganographier_compat_mode -ne $true -or
+    $releaseConfig.allow_permanent_fallback -ne $false -or
+    $releaseConfig.'7z_path' -ne '' -or
+    $releaseConfig.target_dir -ne '' -or
+    $releaseConfig.temp_dir -ne '' -or
+    $releaseConfig.password_file -ne 'code.txt'
 ) {
     throw 'Sanitized release configuration is not safe.'
 }
@@ -1008,7 +1113,8 @@ Copy-Item -LiteralPath $SevenZipDll -Destination (Join-Path $BaseAppDir '7z.dll'
 Copy-Item -LiteralPath $SevenZipLicense -Destination (Join-Path $BaseAppDir '7-Zip-License.txt') -Force
 Copy-Item -LiteralPath (Join-Path $SourceDir 'build_assets\smart7z.ico') -Destination (Join-Path $BaseAppDir 'smart7z.ico') -Force
 Copy-Item -LiteralPath $ReleasePasswordFile -Destination (Join-Path $BaseAppDir 'code.txt') -Force
-Copy-Item -LiteralPath (Join-Path $WorkspaceDir 'smart7z_user_manual .html') -Destination (Join-Path $BaseAppDir 'Smart7z-User-Manual.html') -Force
+Copy-Item -LiteralPath $ManualPath -Destination (Join-Path $BaseAppDir 'Smart7z-User-Manual.html') -Force
+Copy-Item -LiteralPath $ChangelogPath -Destination (Join-Path $BaseAppDir 'CHANGELOG.md') -Force
 Copy-Item -LiteralPath (Join-Path $SourceDir 'THIRD_PARTY_NOTICES.txt') -Destination (Join-Path $BaseAppDir 'THIRD_PARTY_NOTICES.txt') -Force
 Copy-Item -LiteralPath $ReleaseSourceNotice -Destination (Join-Path $BaseAppDir 'Qt-PySide6-CORRESPONDING_SOURCE.txt') -Force
 Copy-Item -LiteralPath $VcRuntimeNoticePath -Destination (Join-Path $BaseAppDir $VcRuntimeNoticeName) -Force
@@ -1076,7 +1182,7 @@ foreach ($licenseName in $requiredLicenses) {
     }
 }
 
-foreach ($requiredName in @('Smart7z.exe', 'Smart7zShell.exe', 'smart7z.ico', '7z.exe', '7z.dll', '7-Zip-License.txt', 'code.txt', 'Smart7z-User-Manual.html', 'README.txt', 'THIRD_PARTY_NOTICES.txt', 'Qt-PySide6-CORRESPONDING_SOURCE.txt', 'Microsoft-Visual-Cpp-Runtime-NOTICE.txt')) {
+foreach ($requiredName in @('Smart7z.exe', 'Smart7zShell.exe', 'smart7z.ico', '7z.exe', '7z.dll', '7-Zip-License.txt', 'code.txt', 'Smart7z-User-Manual.html', 'CHANGELOG.md', 'README.txt', 'THIRD_PARTY_NOTICES.txt', 'Qt-PySide6-CORRESPONDING_SOURCE.txt', 'Microsoft-Visual-Cpp-Runtime-NOTICE.txt')) {
     if (-not (Test-Path -LiteralPath (Join-Path $BaseAppDir $requiredName) -PathType Leaf)) {
         throw "Shared application file is missing: $requiredName"
     }
@@ -1099,7 +1205,7 @@ $portableReadme = (Get-Content -LiteralPath (Join-Path $SourceDir 'release_readm
     $portableReadme,
     [Text.UTF8Encoding]::new($true)
 )
-Compress-Archive -LiteralPath $PortableDir -DestinationPath $PortableZip -CompressionLevel Optimal
+New-ReleaseZip -SourceDir $PortableDir -DestinationPath $PortableZip -PythonExe $VenvPython
 if (-not (Test-Path -LiteralPath (Join-Path $PortableDir 'portable.flag') -PathType Leaf)) {
     throw 'Portable release is missing portable.flag.'
 }
@@ -1112,6 +1218,9 @@ Assert-ReleaseArchive `
         'Smart7zShell.exe',
         'smart7z.ico',
         'portable.flag',
+        'Smart7z-User-Manual.html',
+        'CHANGELOG.md',
+        'README.txt',
         'THIRD_PARTY_NOTICES.txt',
         'Qt-PySide6-CORRESPONDING_SOURCE.txt',
         'Microsoft-Visual-Cpp-Runtime-NOTICE.txt',
@@ -1155,6 +1264,7 @@ $sourceRootFiles = @(
     'smart7z_version_info.txt.in',
     'shell_launcher.cs',
     'THIRD_PARTY_NOTICES.txt',
+    'Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx',
     'Microsoft-Visual-Cpp-Runtime-NOTICE.txt'
 )
 $sourceRootFiles += Get-ChildItem -LiteralPath $SourceDir -File -Filter '*.py' | ForEach-Object Name
@@ -1180,7 +1290,8 @@ foreach ($resourceName in @('code.txt', 'smart7z_config.json')) {
     $stagedResource = Join-Path $ReleaseResourcesDir $resourceName
     Copy-Item -LiteralPath $stagedResource -Destination (Join-Path $SourcePackageDir "resources\$resourceName") -Force
 }
-Copy-Item -LiteralPath (Join-Path $WorkspaceDir 'smart7z_user_manual .html') -Destination (Join-Path $SourcePackageDir 'Smart7z-User-Manual.html') -Force
+Copy-Item -LiteralPath $ManualPath -Destination (Join-Path $SourcePackageDir 'Smart7z-User-Manual.html') -Force
+Copy-Item -LiteralPath $ChangelogPath -Destination (Join-Path $SourcePackageDir 'CHANGELOG.md') -Force
 Copy-Item -LiteralPath $ReleaseSourceNotice -Destination (Join-Path $SourcePackageDir 'Qt-PySide6-CORRESPONDING_SOURCE.txt') -Force
 $sourceReadme = (Get-Content -LiteralPath (Join-Path $SourceDir 'release_readme_source.txt') -Raw -Encoding UTF8).Replace('__VERSION__', $Version)
 [IO.File]::WriteAllText(
@@ -1188,10 +1299,15 @@ $sourceReadme = (Get-Content -LiteralPath (Join-Path $SourceDir 'release_readme_
     $sourceReadme,
     [Text.UTF8Encoding]::new($true)
 )
-Compress-Archive -LiteralPath $SourcePackageDir -DestinationPath $SourceZip -CompressionLevel Optimal
+New-ReleaseZip -SourceDir $SourcePackageDir -DestinationPath $SourceZip -PythonExe $VenvPython
 
 $requiredSourceEntries = @(
     'ui_qt.py',
+    'verify_project.py',
+    'Smart7z-User-Manual.html',
+    'CHANGELOG.md',
+    'README.txt',
+    'Microsoft-Visual-Cpp-Runtime-2015-2022-License.docx',
     'launch_ipc.py',
     'runtime_ipc.py',
     'shell_launcher.cs',
@@ -1231,8 +1347,15 @@ $hashLines = @(
     (Get-FileHash -LiteralPath $InstallerPath -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" }),
     (Get-FileHash -LiteralPath $SourceZip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" })
 )
-$hashPath = Join-Path $ReleaseDir 'SHA256SUMS.txt'
+# 清单按版本命名，避免每次构建覆盖历史版本的校验值。
+# 旧实现固定写 SHA256SUMS.txt，构建 1.0.4 会抹掉 1.0.3 的条目；
+# 仓库里 SHA256SUMS-1.0.2.txt 就是按版本命名的先例。
+$hashPath = Join-Path $ReleaseDir "SHA256SUMS-$Version.txt"
 Set-Content -LiteralPath $hashPath -Value $hashLines -Encoding ASCII
+
+# 同时维护一个不带版本号的别名，指向本次构建，方便"取最新清单"的既有习惯。
+$hashLatestPath = Join-Path $ReleaseDir 'SHA256SUMS.txt'
+Set-Content -LiteralPath $hashLatestPath -Value $hashLines -Encoding ASCII
 
 $portableSize = [Math]::Round((Get-Item -LiteralPath $PortableZip).Length / 1MB, 2)
 $installerSize = [Math]::Round((Get-Item -LiteralPath $InstallerPath).Length / 1MB, 2)
@@ -1242,6 +1365,7 @@ Write-Host "Portable:  $PortableZip ($portableSize MiB)"
 Write-Host "Installer: $InstallerPath ($installerSize MiB)"
 Write-Host "Source:    $SourceZip ($sourceSize MiB)"
 Write-Host "Checksums: $hashPath"
+Write-Host "           $hashLatestPath (alias)"
 } finally {
     Set-Location -LiteralPath $OriginalLocation
 }

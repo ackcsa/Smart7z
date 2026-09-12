@@ -127,7 +127,7 @@ a = Analysis(
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(source_dir / "startup_runtime_hook.py")],
     excludes=[
         "PIL",
         "pytest",

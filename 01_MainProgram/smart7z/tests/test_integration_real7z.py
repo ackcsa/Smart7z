@@ -147,6 +147,50 @@ class TestRealSevenZipPipeline(unittest.TestCase):
                 b"second",
             )
 
+    def test_independent_rar_named_zip_files_complete_and_clean_only_their_own_source(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            first, second = root / "report.r20", root / "report.r21"
+            self._make_zip(first, {"payload.txt": "FIRST", "marker.txt": "one"})
+            self._make_zip(second, {"payload.txt": "SECOND", "marker.txt": "two"})
+            second_before = second.read_bytes()
+            config = {
+                **DEFAULT_CONFIG,
+                "extract_to_source": False, "target_dir": str(root / "output"),
+                "temp_dir": str(root / "staging"), "wait_disk_space": False,
+                "cleanup_policy": "permanent",
+            }
+            executor = Executor(SevenZipRunner(SEVENZIP_PATH), config)
+            for path, payload in ((first, b"FIRST"), (second, b"SECOND")):
+                job = Job(
+                    path=str(path), original_path=str(path), explicit_input=True,
+                    cleanup_policy_snapshot="permanent",
+                )
+                try:
+                    state, _ = executor.execute(job)
+                    self.assertEqual(state, JobState.COMPLETE, job.error_message)
+                    self.assertTrue(job.commit_verified)
+                    self.assertEqual(job.manifest.used_switch, "-tzip")
+                    self.assertEqual(job.manifest.listing_return_code, 0)
+                    self.assertEqual(job.extraction_result.return_code, 0)
+                    self.assertEqual(Path(job.final_destination, "payload.txt").read_bytes(), payload)
+                    self.assertFalse(path.exists())
+                    if path == first:
+                        self.assertEqual(second.read_bytes(), second_before)
+                finally:
+                    executor.cleanup_job_artifacts(job, terminal=True)
+
+    def test_mislabeled_zip_with_trailing_data_still_has_a_listing_warning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "report.r20"
+            self._make_zip(path, {"payload.txt": "payload"})
+            with path.open("ab") as stream:
+                stream.write(b"TAIL" * 4096)
+            manifest = SevenZipRunner(SEVENZIP_PATH).list_with_fallback(str(path))
+            self.assertEqual(manifest.used_switch, "-tzip")
+            self.assertEqual(manifest.listing_attempts, 2)
+            self.assertEqual(manifest.listing_return_code, 1)
+
     def test_empty_zip_commits_verified_empty_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             archive = os.path.join(temp_dir, "empty.zip")

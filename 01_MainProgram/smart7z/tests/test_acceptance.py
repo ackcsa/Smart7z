@@ -39,14 +39,14 @@ from discovery import detect_archive_set, is_multipart_child
 
 
 class TestDelArchiveMigration(unittest.TestCase):
-    def test_false_to_recycle(self):
-        self.assertEqual(map_del_archive_to_cleanup_policy(False), "recycle")
+    def test_false_to_keep(self):
+        self.assertEqual(map_del_archive_to_cleanup_policy(False), "keep")
 
     def test_true_to_permanent(self):
         self.assertEqual(map_del_archive_to_cleanup_policy(True), "permanent")
 
-    def test_missing_none_to_recycle(self):
-        self.assertEqual(map_del_archive_to_cleanup_policy(None), "recycle")
+    def test_missing_none_to_keep(self):
+        self.assertEqual(map_del_archive_to_cleanup_policy(None), "keep")
 
     def test_string_true(self):
         self.assertEqual(map_del_archive_to_cleanup_policy("True"), "permanent")
@@ -54,18 +54,18 @@ class TestDelArchiveMigration(unittest.TestCase):
         self.assertEqual(map_del_archive_to_cleanup_policy("1"), "permanent")
 
     def test_string_false(self):
-        self.assertEqual(map_del_archive_to_cleanup_policy("False"), "recycle")
-        self.assertEqual(map_del_archive_to_cleanup_policy("0"), "recycle")
+        self.assertEqual(map_del_archive_to_cleanup_policy("False"), "keep")
+        self.assertEqual(map_del_archive_to_cleanup_policy("0"), "keep")
 
     def test_int_values(self):
         self.assertEqual(map_del_archive_to_cleanup_policy(1), "permanent")
-        self.assertEqual(map_del_archive_to_cleanup_policy(0), "recycle")
+        self.assertEqual(map_del_archive_to_cleanup_policy(0), "keep")
 
     def test_legacy_raw_migration_false(self):
         raw = {"del_archive": False, "target_dir": "C:\\out"}
         self.assertTrue(is_legacy_raw(raw))
         m = migrate_legacy_raw(raw)
-        self.assertEqual(m["cleanup_policy"], "recycle")
+        self.assertEqual(m["cleanup_policy"], "keep")
         self.assertEqual(m["config_version"], 1)
 
     def test_legacy_raw_migration_true(self):
@@ -74,9 +74,9 @@ class TestDelArchiveMigration(unittest.TestCase):
 
     def test_legacy_missing_del_archive(self):
         m = migrate_legacy_raw({})
-        self.assertEqual(m["cleanup_policy"], "recycle")
+        self.assertEqual(m["cleanup_policy"], "keep")
 
-    def test_load_legacy_preserves_recycle(self):
+    def test_load_legacy_false_preserves_sources_with_keep(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "smart7z_config.json")
             with open(path, "w", encoding="utf-8") as f:
@@ -85,7 +85,7 @@ class TestDelArchiveMigration(unittest.TestCase):
             set_app_dir(tmp)
             try:
                 cfg = load_config()
-                self.assertEqual(cfg["cleanup_policy"], "recycle")
+                self.assertEqual(cfg["cleanup_policy"], "keep")
                 self.assertIn("config_version", cfg)
             finally:
                 set_config_path(None)
@@ -297,6 +297,25 @@ class TestSchedulerCancel(unittest.TestCase):
         for j in jobs:
             self.assertEqual(j.state, JobState.INTERRUPTED)
 
+    def test_discard_remaining_removes_pending_jobs_without_interruption_events(self):
+        events = []
+        sched = self._make_scheduler(
+            event_cb=lambda event_type, *_args, **_kwargs: events.append(event_type)
+        )
+        jobs = [Job(path=f"f{index}.zip") for index in range(3)]
+        for job in jobs:
+            sched.task_queue.put(job)
+            sched._jobs[job.task_id] = job
+
+        removed = set(sched.discard_remaining())
+
+        self.assertEqual(removed, {job.task_id for job in jobs})
+        self.assertEqual(sched.task_queue.qsize(), 0)
+        self.assertFalse(any(event == "job_interrupted" for event in events))
+        for job in jobs:
+            self.assertFalse(sched.has_job(job.task_id))
+            self.assertEqual(job.state, JobState.QUEUED)
+
     def test_password_pending_cancel(self):
         events = []
         sched = self._make_scheduler(
@@ -310,11 +329,137 @@ class TestSchedulerCancel(unittest.TestCase):
         self.assertEqual(job.state, JobState.INTERRUPTED)
         self.assertEqual(len(sched.password_pending), 0)
 
+    def test_discard_selected_removes_all_pending_kinds_and_keeps_others(self):
+        sched = self._make_scheduler()
+        queued, deferred, password, stego, keep = [Job(path=f"{n}.zip") for n in range(5)]
+        for job in (queued, password, stego, keep):
+            sched.submit(job)
+        sched.pause_intake()
+        sched.submit(deferred)
+        sched.password_pending[password.task_id] = password
+        sched.stego_pending[stego.task_id] = stego
+        sched._manual_passwords[password.task_id] = "secret"
+        selected = {job.task_id for job in (queued, deferred, password, stego)}
+        with mock.patch.object(sched.executor, "cleanup_job_artifacts") as cleanup:
+            self.assertEqual(set(sched.discard_jobs(selected)), selected)
+            self.assertEqual(cleanup.call_count, 4)
+        self.assertEqual(set(sched._jobs), {keep.task_id})
+        self.assertFalse(sched.password_pending)
+        self.assertFalse(sched.stego_pending)
+        self.assertFalse(sched._manual_passwords)
+        self.assertEqual(sched.deferred_intake_size(), 0)
+        self.assertEqual(sched.queue_size(), 1)
+        sched.submit_password_response(password, "late")
+        sched.submit_stego_selection(stego, 0)
+        self.assertEqual(sched.queue_size(), 1)
+
+    def test_discard_active_job_cleans_after_worker_and_suppresses_prompt(self):
+        events = []
+        sched = self._make_scheduler(event_cb=lambda kind, *_a, **_k: events.append(kind))
+        started = threading.Event()
+        release = threading.Event()
+        self.addCleanup(release.set)
+
+        def execute(job, **_kwargs):
+            started.set()
+            release.wait(3)
+            return JobState.PASSWORD_REQUIRED, None
+
+        job = Job(path="active.zip")
+        with (
+            mock.patch.object(sched.executor, "execute", side_effect=execute),
+            mock.patch.object(sched.executor, "cleanup_job_artifacts") as cleanup,
+            mock.patch.object(sched.runner, "cancel_current") as cancel,
+        ):
+            sched.submit(job)
+            sched.start()
+            sched.enable_processing()
+            self.assertTrue(started.wait(3))
+            self.assertEqual(sched.discard_jobs({job.task_id}), [job.task_id])
+            cancel.assert_called_once()
+            cleanup.assert_not_called()
+            release.set()
+            deadline = time.monotonic() + 3
+            while sched.current_job is not None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertIsNone(sched.current_job)
+            cleanup.assert_called_once_with(job, terminal=True)
+        self.assertFalse(sched.has_job(job.task_id))
+        self.assertNotIn("password_required", events)
+        self.assertNotIn("job_interrupted", events)
+        self.assertFalse(sched.password_pending)
+        self.assertFalse(sched._closed_nested_batches)
+        self.assertFalse(sched._discarded_nested_batches)
+
+    def test_discard_rejects_late_nested_children_without_history_rows(self):
+        for selected_only in (False, True):
+            with self.subTest(selected_only=selected_only):
+                events = []
+                sched = self._make_scheduler(
+                    event_cb=lambda kind, job, *_a, **_k: events.append((kind, job.task_id))
+                )
+                parent = Job(path="parent.zip")
+                self.assertTrue(sched.submit(parent))
+                sched.task_queue.get_nowait()
+                sched.task_queue.task_done()
+                sched.current_job = parent
+                with mock.patch.object(sched.runner, "cancel_current"):
+                    if selected_only:
+                        sched.discard_jobs({parent.task_id})
+                    else:
+                        sched.discard_remaining()
+                child = Job(path="late-child.zip", nested_depth=1)
+                self.assertFalse(sched.submit(child))
+                self.assertFalse(sched.has_job(child.task_id))
+                self.assertFalse(any(task_id == child.task_id for _, task_id in events))
+                self.assertEqual(sched.queue_size(), 0)
+                sched.current_job = None
+                sched.stop()
+
+    def test_promoted_password_is_used_by_next_job_in_same_batch(self):
+        completed = []
+        done = threading.Event()
+
+        def published(event_type, job, *_args, **_kwargs):
+            if event_type == "job_complete":
+                completed.append(job.task_id)
+                if len(completed) == 2:
+                    done.set()
+
+        sched = self._make_scheduler(event_cb=published)
+        book = Path(self._scheduler_temp.name, "code.txt")
+        book.write_text("old\nshared\n", encoding="utf-8")
+        sched.executor.config["password_file"] = str(book)
+        attempts = []
+
+        def execute(job, manual_password=None, session_main_password=None):
+            attempts.append(sched.executor._password_candidates(manual_password, session_main_password))
+            sched.executor._promote_password("shared")
+            job.record_state(JobState.COMPLETE)
+            return JobState.COMPLETE, "shared"
+
+        with mock.patch.object(sched.executor, "execute", side_effect=execute):
+            sched.submit(Job(path="first.7z"))
+            sched.submit(Job(path="second.7z"))
+            sched.start()
+            sched.enable_processing()
+            try:
+                self.assertTrue(done.wait(3))
+            finally:
+                self.assertTrue(sched.stop())
+        self.assertEqual(attempts, [[None, "old", "shared"], ["shared", None, "old"]])
+        self.assertEqual(book.read_text(encoding="utf-8").splitlines(), ["shared", "old"])
+
     def test_repeated_success_password_emits_one_promotion_event(self):
         events = []
-        sched = self._make_scheduler(
-            event_cb=lambda event_type, *_args, **_kwargs: events.append(event_type)
-        )
+        done = threading.Event()
+
+        def published(event_type, *_args, **_kwargs):
+            events.append(event_type)
+            if events.count("job_complete") == 2:
+                done.set()
+
+        sched = self._make_scheduler(event_cb=published)
 
         def finish(job, **_kwargs):
             job.record_state(JobState.COMPLETE)
@@ -330,12 +475,10 @@ class TestSchedulerCancel(unittest.TestCase):
             sched.start()
             sched.enable_processing()
 
-            deadline = time.time() + 3
-            while (
-                any(job.state != JobState.COMPLETE for job in jobs)
-                and time.time() < deadline
-            ):
-                time.sleep(0.01)
+            try:
+                self.assertTrue(done.wait(3))
+            finally:
+                self.assertTrue(sched.stop())
 
         self.assertTrue(all(job.state == JobState.COMPLETE for job in jobs))
         self.assertEqual(events.count("password_promoted"), 1)
@@ -499,10 +642,17 @@ class TestStegoAutoSelectPolicy(unittest.TestCase):
         high = ArchiveCandidate(
             embedded_format="zip", confidence=Confidence.HIGH,
             start_offset=0, end_offset=100,
-            validation_flags=["eocd_valid", "central_dir_valid"],
+            validation_flags=[
+                "central_directory_valid", "comment_bounds_valid",
+                "all_central_entries_valid", "all_local_headers_valid",
+                "entry_count_matches", "local_header_valid",
+            ],
         )
         self.assertIs(ex._auto_select_candidate([high]), high)
-        high2 = ArchiveCandidate(embedded_format="zip", confidence=Confidence.HIGH, start_offset=10, end_offset=200)
+        high2 = ArchiveCandidate(
+            embedded_format="zip", confidence=Confidence.HIGH, start_offset=10, end_offset=200,
+            validation_flags=["local_header_valid"],
+        )
         self.assertIsNone(ex._auto_select_candidate([high, high2]))
 
 
@@ -555,6 +705,13 @@ class TestEntryPoint(unittest.TestCase):
 
 
 class TestInstallerPolicy(unittest.TestCase):
+    def test_upgrade_context_menu_uses_main_executable(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "smart7z_installer.iss"
+        ).read_text(encoding="utf-8")
+        self.assertIn("""UpdatedCommand := '"' + MainExecutable +""", source)
+        self.assertNotIn("LauncherExecutable", source)
+
     def test_upgrade_and_uninstall_preserve_password_book(self):
         source = (
             Path(__file__).resolve().parents[1] / "smart7z_installer.iss"

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 try:
     import PySide6
@@ -74,6 +77,61 @@ class _FakeAnalysis:
 
 
 class TestSmart7zSpecQtBoundary(unittest.TestCase):
+    def test_release_config_generator_does_not_serialize_build_machine_paths(self):
+        from config import DEFAULT_CONFIG
+
+        build_script = BUILD_SCRIPT_PATH.read_text(encoding="utf-8")
+        generator = build_script.split("$releaseConfigGenerator = @'\n", 1)[1].split("\n'@", 1)[0]
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp) / "smart7z_config.json"
+            private_values = {
+                "7z_path": str(Path(temp) / "private-7z.exe"),
+                "target_dir": str(Path(temp) / "private-output"),
+                "temp_dir": str(Path(temp) / "private-temp"),
+                "password_file": str(Path(temp) / "private-passwords.txt"),
+                "cleanup_policy": "permanent",
+                "del_archive": True,
+                "allow_permanent_fallback": True,
+            }
+            with (
+                mock.patch.dict(DEFAULT_CONFIG, private_values),
+                mock.patch.object(sys, "argv", ["generate", str(PROJECT_ROOT), str(destination)]),
+                mock.patch.object(sys, "path", list(sys.path)),
+            ):
+                exec(compile(generator, "release_config_generator", "exec"), {})
+            generated = json.loads(destination.read_text("utf-8"))
+            for key in ("7z_path", "target_dir", "temp_dir"):
+                self.assertEqual(generated[key], "")
+            self.assertEqual(generated["password_file"], "code.txt")
+            self.assertEqual(generated["cleanup_policy"], "keep")
+            self.assertFalse(generated["del_archive"])
+            self.assertFalse(generated["allow_permanent_fallback"])
+            for key in ("7z_path", "target_dir", "temp_dir", "password_file"):
+                self.assertNotIn(private_values[key], destination.read_text("utf-8"))
+
+    def test_release_documents_are_shared_and_available_in_flat_source_packages(self):
+        build_script = BUILD_SCRIPT_PATH.read_text(encoding="utf-8")
+        for document, packaged_name, workspace_name in (
+            ("ManualPath", "Smart7z-User-Manual.html", "smart7z_user_manual.html"),
+            ("ChangelogPath", "CHANGELOG.md", "CHANGELOG.md"),
+        ):
+            self.assertIn(f"${document} = Join-Path $SourceDir '{packaged_name}'", build_script)
+            self.assertIn(f"${document} = Join-Path $WorkspaceDir '{workspace_name}'", build_script)
+            for destination in ("BaseAppDir", "SourcePackageDir"):
+                self.assertIn(
+                    f"Copy-Item -LiteralPath ${document} -Destination "
+                    f"(Join-Path ${destination} '{packaged_name}')",
+                    build_script,
+                )
+        preamble = build_script.split("$BuildDir =", 1)[0]
+        self.assertIn("@($ManualPath, $ChangelogPath)", preamble)
+        self.assertIn("Required release document is missing", preamble)
+        for flavor in ("installed", "portable", "source"):
+            readme = (PROJECT_ROOT / f"release_readme_{flavor}.txt").read_text("utf-8")
+            self.assertIn("Smart7z-User-Manual.html", readme)
+            self.assertIn("CHANGELOG.md", readme)
+            self.assertIn("__VERSION__", readme)
+
     def test_release_packages_versioned_lightweight_shell_launcher(self):
         self.assertTrue(SHELL_SOURCE_PATH.is_file())
         build_script = BUILD_SCRIPT_PATH.read_text(encoding="utf-8")
@@ -89,8 +147,20 @@ class TestSmart7zSpecQtBoundary(unittest.TestCase):
 
         installer = INSTALLER_SCRIPT_PATH.read_text(encoding="utf-8")
         self.assertIn("RefreshOwnedContextMenuCommand", installer)
-        self.assertIn("Pos(Lowercase(MainExecutable)", installer)
-        self.assertIn("Smart7zShell.exe", installer)
+        self.assertIn("if not IsOwnedContextMenuCommand(ExistingCommand) then", installer)
+        self.assertIn("""UpdatedCommand := '"' + MainExecutable +""", installer)
+
+    def test_installer_only_removes_menus_owned_by_this_installation(self):
+        installer = INSTALLER_SCRIPT_PATH.read_text(encoding="utf-8")
+        self.assertIn("function IsOwnedContextMenuCommand", installer)
+        self.assertIn("CompareText(Executable, ExpandConstant('{app}\\{#MyAppExeName}')) = 0", installer)
+        self.assertIn("CompareText(Executable, ExpandConstant('{app}\\Smart7zShell.exe')) = 0", installer)
+        self.assertNotIn("Pos(Lowercase(MainExecutable)", installer)
+        removal = installer.split("procedure RemoveOwnedContextMenuKey", 1)[1].split("procedure RemoveContextMenuKeys", 1)[0]
+        self.assertIn("RegQueryStringValue(HKCU, KeyPath + '\\command'", removal)
+        self.assertIn("if IsOwnedContextMenuCommand(ExistingCommand) then", removal)
+        self.assertEqual(installer.count("RegDeleteKeyIncludingSubkeys("), 1)
+        self.assertEqual(installer.count("RemoveOwnedContextMenuKey('Software\\Classes\\"), 6)
 
     def test_microsoft_runtime_license_is_pinned(self):
         self.assertTrue(VC_RUNTIME_LICENSE_PATH.is_file())
@@ -268,7 +338,12 @@ Assert-MinimalQtRuntime -Root $env:SMART7Z_TEST_RUNTIME_ROOT
             cwd=PROJECT_ROOT,
             env=env,
             capture_output=True,
+            # Windows PowerShell writes OEM/ANSI (GBK on zh-CN systems)
+            # regardless of -EncodedCommand; strict decoding kills the
+            # reader thread with UnicodeDecodeError on those machines.
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=30,
             check=False,
         )

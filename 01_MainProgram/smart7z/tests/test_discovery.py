@@ -1,7 +1,10 @@
 import unittest
 import os
 import sys
+import struct
 import tempfile
+import zipfile
+import zlib
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,6 +15,7 @@ from discovery import (
     detect_archive_set,
     group_into_sets,
     get_archive_volumes,
+    logical_archive_key,
 )
 from models import ArchiveSet
 
@@ -29,8 +33,16 @@ class TestIsMultipartChild(unittest.TestCase):
     def test_001(self):
         self.assertFalse(is_multipart_child("test.001"))
 
-    def test_r01(self):
-        self.assertTrue(is_multipart_child("test.r01"))
+    def test_r01_without_main_rar_is_not_a_child(self):
+        # 没有同族 .rar 主卷时，.r01 是独立包而不是续卷；若判为子卷，
+        # 扫描会永久跳过它（实测：这种文件里的 ZIP 可被 7-Zip 正常解压）。
+        self.assertFalse(is_multipart_child("test.r01"))
+
+    def test_r01_with_main_rar_is_a_child(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "test.rar"), "wb") as handle:
+                handle.write(b"Rar!\x1a\x07\x00" + b"0" * 64)
+            self.assertTrue(is_multipart_child(os.path.join(tmp, "test.r01")))
 
     def test_z01_no_zip(self):
         self.assertFalse(is_multipart_child("test.z01"))
@@ -264,6 +276,144 @@ class TestGetArchiveVolumes(unittest.TestCase):
                     f.write("x")
             vols = get_archive_volumes(os.path.join(tmp, "a.001"))
             self.assertEqual(len(vols), 2)
+
+
+class TestContinuationNamedPackages(unittest.TestCase):
+    """A complete archive keeps its own identity even with a continuation name."""
+
+    @staticmethod
+    def _write_zip(path):
+        with zipfile.ZipFile(path, "w") as writer:
+            writer.writestr("payload.txt", b"package")
+
+    @staticmethod
+    def _write_fragment(path):
+        with open(path, "wb") as stream:
+            stream.write(b"\x00" * 64)
+
+    def test_zip_package_named_r20_is_standalone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "report.r20")
+            self._write_zip(path)
+            archive_set = detect_archive_set(path)
+        self.assertEqual(archive_set.format_family, "standalone")
+        self.assertTrue(archive_set.is_complete)
+        self.assertEqual(list(archive_set.volumes), [os.path.abspath(path)])
+
+    def test_zip_package_named_z20_is_standalone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "data.z20")
+            self._write_zip(path)
+            archive_set = detect_archive_set(path)
+        self.assertEqual(archive_set.format_family, "standalone")
+        self.assertTrue(archive_set.is_complete)
+
+    def test_package_is_not_a_child_of_a_same_named_zip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_zip(os.path.join(tmp, "data.zip"))
+            package = os.path.join(tmp, "data.z20")
+            self._write_zip(package)
+            self.assertFalse(is_multipart_child(package))
+
+    def test_r_package_is_not_a_child_of_a_same_named_rar(self):
+        # .r99 携带完整归档时是独立包，即使同族 .rar 存在也不能被跳过，
+        # 去重键同样不能与 .rar 合并（否则会被静默丢弃）。
+        with tempfile.TemporaryDirectory() as tmp:
+            rar_main = os.path.join(tmp, "mix.rar")
+            with open(rar_main, "wb") as stream:
+                stream.write(b"Rar!\x1a\x07\x00" + b"0" * 64)
+            package = os.path.join(tmp, "mix.r99")
+            self._write_zip(package)
+            self.assertFalse(is_multipart_child(package))
+            self.assertNotEqual(
+                logical_archive_key(package), logical_archive_key(rar_main)
+            )
+
+    def test_r_continuation_of_a_rar_set_is_still_a_child(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "book.rar"), "wb") as stream:
+                stream.write(b"Rar!\x1a\x07\x00" + b"0" * 64)
+            fragment = os.path.join(tmp, "book.r01")
+            self._write_fragment(fragment)
+            self.assertTrue(is_multipart_child(fragment))
+
+    def test_structureless_sidecar_of_complete_zip_is_not_a_child(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_zip(os.path.join(tmp, "report.zip"))
+            fragment = os.path.join(tmp, "report.z01")
+            self._write_fragment(fragment)
+            self.assertFalse(is_multipart_child(fragment))
+            self.assertNotEqual(logical_archive_key(fragment), logical_archive_key(
+                os.path.join(tmp, "report.zip")
+            ))
+            self.assertEqual(detect_archive_set(fragment).main_path, fragment)
+
+    def test_genuine_missing_volume_is_still_incomplete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_fragment(os.path.join(tmp, "report.zip"))
+            fragment = os.path.join(tmp, "report.z03")
+            self._write_fragment(fragment)
+            archive_set = detect_archive_set(fragment)
+        self.assertFalse(archive_set.is_complete)
+        self.assertEqual(archive_set.format_family, "zip_split")
+
+    def test_numbered_fragment_without_structure_still_groups(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("archive.001", "archive.002"):
+                self._write_fragment(os.path.join(tmp, name))
+            archive_set = detect_archive_set(os.path.join(tmp, "archive.001"))
+        self.assertEqual(archive_set.format_family, "numeric_split")
+        self.assertTrue(archive_set.is_complete)
+
+    def test_complete_package_wins_even_with_contiguous_same_named_siblings(self):
+        for suffix in (".z01", ".r00", ".r01", ".002", ".part2.rar", ".a01", "2.swm"):
+            with self.subTest(suffix=suffix), tempfile.TemporaryDirectory() as tmp:
+                main_suffix = (
+                    ".zip" if suffix == ".z01" else
+                    ".001" if suffix == ".002" else
+                    ".part1.rar" if suffix == ".part2.rar" else
+                    ".arj" if suffix == ".a01" else
+                    ".swm" if suffix == "2.swm" else ".rar"
+                )
+                main = os.path.join(tmp, "package" + main_suffix)
+                selected = os.path.join(tmp, "package" + suffix)
+                self._write_zip(main)
+                self._write_zip(selected)
+                archive_set = detect_archive_set(selected)
+                self.assertEqual(archive_set.main_path, selected)
+                self.assertEqual(archive_set.volumes, [selected])
+                self.assertFalse(is_multipart_child(selected))
+                self.assertNotEqual(logical_archive_key(selected), logical_archive_key(main))
+
+    def test_real_rar_main_volume_flags_prevent_standalone_override(self):
+        for version in (4, 5):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as tmp:
+                if version == 4:
+                    body = struct.pack("<BHHHI", 0x73, 1, 13, 0, 0)
+                    header = b"Rar!\x1a\x07\x00" + struct.pack("<H", zlib.crc32(body) & 0xFFFF) + body
+                else:
+                    body = b"\x03\x01\x00\x01"
+                    header = b"Rar!\x1a\x07\x01\x00" + struct.pack("<L", zlib.crc32(body)) + body
+                main = os.path.join(tmp, "volumes.part1.rar")
+                child = os.path.join(tmp, "volumes.part2.rar")
+                for path in (main, child):
+                    with open(path, "wb") as stream:
+                        stream.write(header)
+                self.assertTrue(is_multipart_child(child))
+                self.assertEqual(logical_archive_key(main), logical_archive_key(child))
+                self.assertEqual(detect_archive_set(child).volumes, [main, child])
+
+    def test_incomplete_7z_header_does_not_override_missing_volume(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            body = struct.pack("<QQL", 4096, 20, 0)
+            header = b"7z\xbc\xaf\x27\x1c\x00\x04" + struct.pack("<L", zlib.crc32(body)) + body
+            main = os.path.join(tmp, "archive.7z.001")
+            with open(main, "wb") as stream:
+                stream.write(header + b"payload")
+            self._write_fragment(os.path.join(tmp, "archive.7z.003"))
+            archive_set = detect_archive_set(main)
+            self.assertFalse(archive_set.is_complete)
+            self.assertEqual(archive_set.missing_indexes, [2])
 
 
 if __name__ == '__main__':

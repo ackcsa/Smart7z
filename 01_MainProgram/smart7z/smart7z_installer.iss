@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.2"
+  #define MyAppVersion "1.0.4"
 #endif
 #ifndef SourceDir
   #error SourceDir must be supplied with /DSourceDir=...
@@ -62,14 +62,51 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function IsOwnedContextMenuCommand(const Command: String): Boolean;
+var
+  Executable: String;
+  Boundary: Integer;
+begin
+  Result := False;
+  Executable := Trim(Command);
+  if Executable = '' then
+    exit;
+  if Executable[1] = '"' then
+  begin
+    Delete(Executable, 1, 1);
+    Boundary := Pos('"', Executable);
+    if Boundary = 0 then
+      exit;
+    Executable := Copy(Executable, 1, Boundary - 1);
+  end
+  else
+  begin
+    Boundary := Pos(' ', Executable);
+    if Boundary > 0 then
+      Executable := Copy(Executable, 1, Boundary - 1);
+  end;
+  Result :=
+    (CompareText(Executable, ExpandConstant('{app}\{#MyAppExeName}')) = 0) or
+    (CompareText(Executable, ExpandConstant('{app}\Smart7zShell.exe')) = 0);
+end;
+
+procedure RemoveOwnedContextMenuKey(const KeyPath: String);
+var
+  ExistingCommand: String;
+begin
+  if RegQueryStringValue(HKCU, KeyPath + '\command', '', ExistingCommand) then
+    if IsOwnedContextMenuCommand(ExistingCommand) then
+      RegDeleteKeyIncludingSubkeys(HKCU, KeyPath);
+end;
+
 procedure RemoveContextMenuKeys;
 begin
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\*\shell\Smart7zExtractHere');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\*\shell\Smart7zExtractHereDelete');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\*\shell\Smart7z');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\Smart7zExtractHere');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\Smart7zExtractHereDelete');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\Smart7z');
+  RemoveOwnedContextMenuKey('Software\Classes\*\shell\Smart7zExtractHere');
+  RemoveOwnedContextMenuKey('Software\Classes\*\shell\Smart7zExtractHereDelete');
+  RemoveOwnedContextMenuKey('Software\Classes\*\shell\Smart7z');
+  RemoveOwnedContextMenuKey('Software\Classes\Directory\shell\Smart7zExtractHere');
+  RemoveOwnedContextMenuKey('Software\Classes\Directory\shell\Smart7zExtractHereDelete');
+  RemoveOwnedContextMenuKey('Software\Classes\Directory\shell\Smart7z');
 end;
 
 procedure RefreshOwnedContextMenuCommand(const Scope, Verb, CleanupFlag: String);
@@ -78,7 +115,6 @@ var
   CommandKey: String;
   ExistingCommand: String;
   MainExecutable: String;
-  LauncherExecutable: String;
   UpdatedCommand: String;
 begin
   KeyPath := Scope + '\' + Verb;
@@ -87,11 +123,10 @@ begin
     exit;
 
   MainExecutable := ExpandConstant('{app}\{#MyAppExeName}');
-  if Pos(Lowercase(MainExecutable), Lowercase(ExistingCommand)) = 0 then
+  if not IsOwnedContextMenuCommand(ExistingCommand) then
     exit;
 
-  LauncherExecutable := ExpandConstant('{app}\Smart7zShell.exe');
-  UpdatedCommand := '"' + LauncherExecutable +
+  UpdatedCommand := '"' + MainExecutable +
     '" --context-menu --start --extract-here ' + CleanupFlag + ' "%1"';
   RegWriteStringValue(HKCU, CommandKey, '', UpdatedCommand);
 end;

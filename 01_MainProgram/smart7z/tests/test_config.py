@@ -49,6 +49,16 @@ class TestDefaultConfig(unittest.TestCase):
 
 
 class TestConfigSaveLoad(unittest.TestCase):
+    def test_invalid_utf8_falls_back_to_keep_without_overwriting_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "smart7z_config.json")
+            original = b'{"cleanup_policy":"permanent","target_dir":"\xff"}'
+            path.write_bytes(original)
+            with self.assertWarnsRegex(RuntimeWarning, "Falling back to defaults"):
+                loaded = load_config(str(path))
+            self.assertEqual(loaded["cleanup_policy"], "keep")
+            self.assertEqual(path.read_bytes(), original)
+
     def test_save_and_load(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_path = os.path.join(tmp, 'smart7z_config.json')

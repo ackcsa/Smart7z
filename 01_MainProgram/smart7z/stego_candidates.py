@@ -22,6 +22,7 @@ import os
 import stat
 import struct
 import logging
+from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from models import ArchiveCandidate, Confidence
@@ -1255,12 +1256,13 @@ def is_exact_high_confidence_candidate(candidate: ArchiveCandidate) -> bool:
     if (
         candidate.confidence != Confidence.HIGH
         or candidate.embedded_format.casefold() not in {"zip", "zip64"}
+        or candidate.start_offset < 0
         or candidate.end_offset <= candidate.start_offset
-        or candidate.mode == "signature_only"
+        or candidate.mode.casefold() == "signature_only"
     ):
         return False
     flags = {flag.casefold() for flag in candidate.validation_flags}
-    if {"boundary_provisional", "end_provisional"} & flags:
+    if {"boundary_provisional", "end_provisional", "signature_only"} & flags:
         return False
     required = {
         "central_directory_valid",
@@ -1272,6 +1274,74 @@ def is_exact_high_confidence_candidate(candidate: ArchiveCandidate) -> bool:
     if not required.issubset(flags):
         return False
     return "local_header_valid" in flags or "empty_archive" in flags
+
+
+@dataclass
+class CandidateTriage:
+    candidates: List[ArchiveCandidate] = field(default_factory=list)
+    ignored: List[Tuple[ArchiveCandidate, str]] = field(default_factory=list)
+    decision: str = "IGNORE"
+    recommended_index: Optional[int] = None
+
+
+def triage_candidates(
+    candidates: Iterable[ArchiveCandidate], host_size: int
+) -> CandidateTriage:
+    """Separate executable structural evidence from default-interaction noise."""
+    result = CandidateTriage()
+    structural_flags = {
+        "local_header_valid", "central_directory_valid", "empty_archive",
+        "all_central_entries_valid", "all_local_headers_valid",
+    }
+    valid = []
+    for candidate in candidates:
+        flags = {flag.casefold() for flag in candidate.validation_flags}
+        if not 0 <= candidate.start_offset < candidate.end_offset <= host_size:
+            reason = "invalid_bounds"
+        elif candidate.mode.casefold() == "signature_only" or "signature_only" in flags:
+            reason = "signature_only"
+        elif not flags & structural_flags:
+            reason = "no_structural_evidence"
+        else:
+            valid.append(candidate)
+            continue
+        result.ignored.append((candidate, reason))
+
+    # Exact evidence wins only for identical byte ranges, never by swallowing
+    # overlapping/nested candidates which may represent distinct archives.
+    by_key = {}
+    for candidate in valid:
+        fmt = candidate.embedded_format.casefold()
+        key = (candidate.start_offset, candidate.end_offset, "zip" if fmt == "zip64" else fmt)
+        previous = by_key.get(key)
+        if previous is None:
+            by_key[key] = candidate
+            continue
+        rank = lambda item: (is_exact_high_confidence_candidate(item), _score_candidate(item))
+        if rank(candidate) > rank(previous):
+            result.ignored.append((previous, "duplicate"))
+            by_key[key] = candidate
+        else:
+            result.ignored.append((candidate, "duplicate"))
+    result.candidates = sorted(
+        by_key.values(),
+        key=lambda item: (is_exact_high_confidence_candidate(item), _score_candidate(item)),
+        reverse=True,
+    )
+    if len(result.candidates) == 1:
+        candidate = result.candidates[0]
+        flags = {flag.casefold() for flag in candidate.validation_flags}
+        if is_exact_high_confidence_candidate(candidate):
+            result.decision = "DEFAULT_AUTO"
+            result.recommended_index = 0
+        elif not flags & {"boundary_provisional", "end_provisional"}:
+            result.decision = "DEFAULT_PRESELECT"
+            result.recommended_index = 0
+        else:
+            result.decision = "REVIEW"
+    elif result.candidates:
+        result.decision = "REVIEW"
+    return result
 
 
 def find_exact_high_confidence_candidates(

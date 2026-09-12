@@ -69,14 +69,20 @@ class _FakeScheduler:
     def cancel_jobs(self, _task_ids):
         return []
 
-    def cancel_remaining(self):
+    def discard_remaining(self):
         self.processing_enabled.clear()
+        return []
 
     def clear_finished(self, _task_ids=None):
         return []
 
     def is_io_busy(self):
         return False
+
+    def has_unfinished_jobs(self):
+        return self.current_job is not None or any(
+            not job.is_terminal for job in self.submitted
+        )
 
     def deferred_intake_size(self):
         return 0
@@ -358,7 +364,8 @@ class TestQtIpcIntegration(unittest.TestCase):
         window.activate_window.assert_called_once_with(
             disarm_context_auto_close=False
         )
-        window._start_startup_processing.assert_called_once_with()
+        window._setup_scheduler.assert_called_once_with(background=True)
+        window._start_startup_processing.assert_not_called()
 
     def test_run_app_does_not_release_mutex_before_shutdown_completes(self):
         app = mock.Mock()

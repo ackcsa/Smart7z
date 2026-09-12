@@ -13,7 +13,6 @@ import tempfile
 import threading
 from typing import Optional
 
-from config import get_state_path
 from launch_ipc import (
     EXTERNAL_CLEANUP_POLICIES,
     ExternalIntakeRequest,
@@ -29,6 +28,7 @@ from launch_ipc import (
     IPC_STATE_MAX_BYTES,
     IPC_VERSION,
     _forward_launch_request,
+    _ipc_state_path,
     _normalize_ipc_path,
     forward_to_existing,
     parse_launch_args,
@@ -97,10 +97,6 @@ CONTEXT_AUTO_CLOSE_GRACE_MS = 1500
 SCAN_MODE_DEEP = "deep"
 SCAN_MODE_STEGANOGRAPHIER = "steganographier"
 SCAN_MODE_NORMAL = "normal"
-
-def _ipc_state_path() -> str:
-    return get_state_path(f"ipc-v{IPC_VERSION}.json")
-
 
 def _read_ipc_state(path: Optional[str] = None) -> Optional[dict]:
     state_path = path or _ipc_state_path()
@@ -179,7 +175,10 @@ class BoundedIPCServer:
     def __init__(
         self,
         app,
-        port: int = IPC_PORT,
+        # Bind an ephemeral port by default: the actual port is published
+        # through the IPC state file, so a fixed port only created a
+        # startup failure mode when 59777 was taken by another program.
+        port: int = 0,
         state_path: Optional[str] = None,
         token: Optional[str] = None,
     ):

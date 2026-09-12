@@ -268,21 +268,20 @@ namespace Smart7zShell
 
         private static string GetStatePath()
         {
-            string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            string stateRoot;
-            if (File.Exists(Path.Combine(appDirectory, "portable.flag")))
+            string stateRoot = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+            if (string.IsNullOrEmpty(stateRoot))
             {
-                stateRoot = appDirectory;
+                stateRoot = Environment.GetEnvironmentVariable("TEMP");
             }
-            else
+            if (string.IsNullOrEmpty(stateRoot))
             {
-                stateRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                if (string.IsNullOrEmpty(stateRoot))
-                {
-                    stateRoot = Path.GetTempPath();
-                }
-                stateRoot = Path.Combine(Path.GetFullPath(stateRoot), "Smart7z");
+                stateRoot = Environment.GetEnvironmentVariable("TMP");
             }
+            if (string.IsNullOrEmpty(stateRoot))
+            {
+                stateRoot = Path.GetTempPath();
+            }
+            stateRoot = Path.Combine(Path.GetFullPath(stateRoot), "Smart7z");
             return Path.Combine(stateRoot, "ipc-v" + IpcVersion + ".json");
         }
 

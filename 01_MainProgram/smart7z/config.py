@@ -36,6 +36,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "config_version": CONFIG_VERSION,
     "cleanup_policy": CleanupPolicy.KEEP.value,
     "nested_extraction": False,
+    "allow_permanent_fallback": False,
     "max_nested_depth": 2,
     "space_wait_timeout": 7200,
     "max_manifest_entries": 200_000,
@@ -61,6 +62,7 @@ _CONFIG_TYPES: Dict[str, type] = {
     "config_version": int,
     "cleanup_policy": str,
     "nested_extraction": bool,
+    "allow_permanent_fallback": bool,
     "max_nested_depth": int,
     "space_wait_timeout": int,
     "max_manifest_entries": int,
@@ -196,16 +198,16 @@ def _validate_config(config: Dict[str, Any]) -> None:
 def map_del_archive_to_cleanup_policy(del_archive: Any) -> str:
     """Pure mapping used by migration and tests.
 
-    Legacy semantics:
-      False / missing / None  -> RECYCLE (Recycle Bin)
+    Legacy semantics (matching the documented meaning of del_archive):
+      False / missing / None  -> KEEP (no automatic source cleanup)
       True                    -> PERMANENT
     """
     if del_archive is None:
-        return CleanupPolicy.RECYCLE.value
+        return CleanupPolicy.KEEP.value
     return (
         CleanupPolicy.PERMANENT.value
         if _coerce_bool(del_archive)
-        else CleanupPolicy.RECYCLE.value
+        else CleanupPolicy.KEEP.value
     )
 
 
@@ -290,7 +292,7 @@ def load_config(path: Optional[str] = None) -> Dict[str, Any]:
         if not content.strip():
             raise json.JSONDecodeError("empty configuration", content, 0)
         raw = json.loads(content)
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, UnicodeError, OSError) as e:
         warnings.warn(
             f"[Smart7z] Configuration file is malformed or unreadable: {e}. "
             f"Falling back to defaults (cleanup KEEP). File: {source_path}",

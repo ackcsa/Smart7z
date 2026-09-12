@@ -417,6 +417,9 @@ class SltStreamParser:
             return
 
         if not self.saw_files_separator:
+            if stripped.startswith("Open WARNING:"):
+                self._archive_headers["Open WARNING"] = stripped.partition(":")[2].strip()
+                return
             if "=" in raw:
                 key, val = raw.split("=", 1)
                 key = key.strip()
@@ -467,6 +470,7 @@ class SltStreamParser:
                     "Encrypted",
                     "Volumes",
                     "Volume Index",
+                    "Open WARNING",
                 )
             }
             self._finished = True
@@ -937,7 +941,6 @@ class SevenZipRunner:
                 manifest_entry_limit=manifest_entry_limit,
             )
             manifest.listing_attempts = max(1, manifest.listing_attempts)
-            return manifest
         except SevenZipError as first_error:
             first_error.listing_attempts = max(1, first_error.listing_attempts)
             if first_error.category not in (
@@ -973,6 +976,42 @@ class SevenZipRunner:
                 if not fallback_error.early_abort_reason:
                     fallback_error.early_abort_reason = first_error.early_abort_reason
                 raise fallback_error from first_error
+
+        if (
+            manifest.listing_return_code != EXIT_WARNING
+            or manifest.summary_mode
+            or manifest.early_abort_reason
+            or not re.fullmatch(
+                r"Cannot open the file as \[[^\]\r\n]+\] archive",
+                manifest.raw_fields.get("Open WARNING", ""),
+            )
+        ):
+            return manifest
+        switch = _targeted_type_switch(path)
+        expected_switch = {
+            "zip": "-tzip", "7z": "-t7z", "rar": "-trar", "rar5": "-trar",
+        }.get(manifest.format)
+        if not switch or switch != expected_switch:
+            return manifest
+
+        # Re-list with corroborated format evidence; never clear warnings by fiat.
+        try:
+            checked = self.list(
+                path,
+                password=password,
+                type_switch=switch,
+                timeout=timeout,
+                manifest_entry_limit=manifest_entry_limit,
+            )
+        except SevenZipError as error:
+            error.listing_wall_ms += manifest.listing_wall_ms
+            error.parse_cpu_ms += manifest.parse_cpu_ms
+            error.listing_attempts = max(1, error.listing_attempts) + manifest.listing_attempts
+            raise
+        checked.listing_wall_ms += manifest.listing_wall_ms
+        checked.parse_cpu_ms += manifest.parse_cpu_ms
+        checked.listing_attempts = max(1, checked.listing_attempts) + manifest.listing_attempts
+        return checked
 
     def supported_formats(self, timeout: int = 30) -> Set[str]:
         """Query ``7z i`` once per executable and return advertised extensions."""

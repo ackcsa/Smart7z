@@ -1062,12 +1062,24 @@ class RecoveryJournal:
 
     @staticmethod
     def _remove_empty_dir(path: str) -> bool:
+        # Newer Windows builds remove non-empty directories on os.rmdir, so
+        # verify emptiness explicitly instead of relying on rmdir failing.
+        try:
+            with os.scandir(path) as entries:
+                if next(entries, None) is not None:
+                    logger.warning("Recovery directory is not empty: %s", path)
+                    return False
+        except FileNotFoundError:
+            return True
+        except OSError:
+            logger.warning("Recovery directory cannot be inspected: %s", path)
+            return False
         try:
             os.rmdir(path)
         except FileNotFoundError:
             return True
         except OSError:
-            logger.warning("Recovery directory is not empty: %s", path)
+            logger.warning("Recovery directory could not be removed: %s", path)
             return False
         return True
 

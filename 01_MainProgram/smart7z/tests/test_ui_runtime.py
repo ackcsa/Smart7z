@@ -19,6 +19,56 @@ import windows_adapters
 
 
 class TestIpcLifecycle(unittest.TestCase):
+    def test_all_distribution_copies_share_the_published_ipc_endpoint(self):
+        received = []
+
+        class App:
+            @staticmethod
+            def _post_to_ui(callback, *args):
+                callback(*args)
+                return True
+
+            @staticmethod
+            def process_ipc_args(paths, *flags):
+                received.append((paths, flags))
+                return True
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive = root / "input.zip"
+            archive.write_bytes(b"fixture")
+            installed = root / "installed" / "Smart7z.exe"
+            portable = root / "portable" / "Smart7z.exe"
+            portable.parent.mkdir()
+            (portable.parent / "portable.flag").touch()
+            source = root / "source" / "launch_ipc.py"
+            with (
+                mock.patch.dict(os.environ, {"LOCALAPPDATA": str(root / "user")}),
+                mock.patch.object(launch_ipc, "_instance_mutex_exists", return_value=True),
+            ):
+                server = runtime_ipc.BoundedIPCServer(App())
+                try:
+                    with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(sys, "executable", str(installed)):
+                        self.assertTrue(server.start())
+                    expected = root / "user" / "Smart7z" / f"ipc-v{runtime_ipc.IPC_VERSION}.json"
+                    self.assertEqual(Path(server.state_path), expected)
+                    for frozen, executable in ((True, installed), (True, portable), (False, source)):
+                        with (
+                            self.subTest(frozen=frozen, executable=str(executable)),
+                            mock.patch.object(sys, "frozen", frozen, create=True),
+                            mock.patch.object(sys, "executable", str(executable)),
+                            mock.patch.object(launch_ipc, "__file__", str(source)),
+                        ):
+                            self.assertEqual(launch_ipc._ipc_state_path(), server.state_path)
+                            result = launch_ipc.forward_to_existing([str(archive)], auto_start=False, cleanup_policy="keep")
+                            self.assertTrue(result.accepted, result.reason)
+                    self.assertEqual(len(received), 3)
+                    self.assertTrue(all(flags[0:2] == (False, "keep") for _paths, flags in received))
+                finally:
+                    self.assertTrue(server.close())
+                self.assertFalse(expected.exists())
+                self.assertFalse((portable.parent / expected.name).exists())
+
     def test_absent_instance_mutex_skips_stale_state_and_socket_probe(self):
         with (
             mock.patch.object(launch_ipc, "_instance_mutex_exists", return_value=False),
@@ -434,18 +484,19 @@ class TestWindowsAdapterLifecycle(unittest.TestCase):
 
     def test_context_menu_quotes_frozen_target(self):
         executable = r"C:\Program Files\Smart7z\smart7z.exe"
-        launcher = r"C:\Program Files\Smart7z\Smart7zShell.exe"
         with (
             mock.patch.object(windows_adapters.sys, "executable", executable),
             mock.patch.object(windows_adapters.sys, "frozen", True, create=True),
             mock.patch.object(windows_adapters.os.path, "isfile", return_value=True),
         ):
             command = windows_adapters.build_context_menu_command("permanent")
+        # The main executable is always used; the .NET shell launcher is
+        # known to crash on some Windows builds and is no longer referenced.
         self.assertEqual(
             command,
             subprocess.list2cmdline(
                 [
-                    launcher,
+                    executable,
                     "--context-menu",
                     "--start",
                     "--extract-here",

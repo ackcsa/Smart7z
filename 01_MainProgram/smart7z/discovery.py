@@ -37,7 +37,7 @@ def logical_archive_key(path: str) -> str:
     absolute = os.path.abspath(os.path.normpath(path))
     directory = os.path.dirname(absolute)
     name = os.path.basename(absolute)
-    if _numeric_child_is_standalone(absolute):
+    if _named_volume_is_independent(absolute):
         return _canonical(absolute)
     match = _PART_RAR_RE.match(name)
     if match and _volume_index(match.group("index"), minimum=1) is not None:
@@ -51,16 +51,29 @@ def logical_archive_key(path: str) -> str:
         else:
             match = _CLASSIC_R_RE.match(name)
             if match:
-                if (
-                    match.group("letter").casefold() == "z"
-                    and _z_volume_is_zip(directory, match.group("base"))
-                ):
+                # A continuation name only folds onto a shared key when the
+                # set actually has a main volume.  Packages that merely look
+                # like continuations keep their own identity instead of being
+                # deduplicated against an unrelated sibling.
+                if match.group("letter").casefold() == "z":
+                    # ``.zNN`` continues a split-ZIP set, not a classic RAR
+                    # set; folding it onto ``.rar`` would merge unrelated
+                    # packages.
+                    if not _zip_split_has_main_volume(directory, match):
+                        return _canonical(absolute)
                     name = match.group("base") + ".zip"
                 else:
+                    if not _classic_rar_has_main_volume(directory, match):
+                        return _canonical(absolute)
                     name = match.group("base") + ".rar"
             else:
                 match = _ZIP_Z_RE.match(name)
                 if match and _volume_index(match.group("index"), minimum=1) is not None:
+                    # Only fold onto the shared ".zip" key when that main
+                    # volume exists.  Otherwise the file is its own package
+                    # and must not be deduplicated away.
+                    if not _zip_split_has_main_volume(directory, match):
+                        return _canonical(absolute)
                     name = match.group("base") + ".zip"
                 else:
                     match = _ARJ_A_RE.match(name)
@@ -95,7 +108,7 @@ def _actual_path(directory: str, name: str, index: Dict[str, str]) -> str:
 def is_multipart_child(path: str) -> bool:
     name = os.path.basename(path)
     directory = os.path.dirname(os.path.abspath(path))
-    if _numeric_child_is_standalone(path):
+    if _named_volume_is_independent(path):
         return False
     match = _PART_RAR_RE.match(name)
     part_index = (
@@ -125,16 +138,23 @@ def is_multipart_child(path: str) -> bool:
         return True
     match = _CLASSIC_R_RE.match(name)
     if match:
-        selected_exists = os.path.exists(path)
-        if (
-            match.group("letter").casefold() == "z"
-            and _z_volume_is_zip(directory, match.group("base"))
-        ):
-            main = os.path.join(directory, match.group("base") + ".zip")
-            return os.path.exists(main)
+        if match.group("letter").casefold() == "z":
+            # ``.zNN`` is the ZIP split set (its main volume is ``.zip``).
+            # A ``.zNN`` file that is itself a complete archive is a package
+            # in its own right, exactly as detect_archive_set() decides.
+            if has_independent_archive_structure(path):
+                return False
+            return _zip_split_has_main_volume(directory, match)
+        # Same reasoning for ``.rNN``: a companion ``.rNN`` that carries a
+        # complete archive is its own package even when a ``.rar`` exists.
+        if _classic_or_zip_child_is_standalone(path):
+            return False
+        if not _classic_rar_has_main_volume(directory, match):
+            return False
         main = os.path.join(directory, match.group("base") + ".rar")
         if os.path.exists(main):
             return True
+        selected_exists = os.path.exists(path)
         if selected_exists:
             first = os.path.join(directory, match.group("base") + ".r00")
             return os.path.exists(first) and _classic_rar_index(match) != 0
@@ -144,8 +164,7 @@ def is_multipart_child(path: str) -> bool:
         match
         and _volume_index(match.group("index"), minimum=1) is not None
     ):
-        main = os.path.join(directory, match.group("base") + ".zip")
-        return os.path.exists(main)
+        return _zip_split_has_main_volume(directory, match)
     match = _ARJ_A_RE.match(name)
     arj_index = (
         _volume_index(match.group("index"), minimum=1) if match else None
@@ -171,6 +190,22 @@ def is_multipart_child(path: str) -> bool:
 
 
 def detect_archive_set(path: str) -> ArchiveSet:
+    """Group by name only when the selected file is not self-contained."""
+
+    archive_set = _detect_archive_set_by_name(path)
+    absolute = os.path.abspath(os.path.normpath(path))
+    if archive_set.format_family != "standalone":
+        if has_independent_archive_structure(absolute):
+            return _standalone_set(absolute)
+        if (
+            _canonical(archive_set.main_path) != _canonical(absolute)
+            and has_independent_archive_structure(archive_set.main_path)
+        ):
+            return _standalone_set(absolute)
+    return archive_set
+
+
+def _detect_archive_set_by_name(path: str) -> ArchiveSet:
     path = os.path.abspath(os.path.normpath(path))
     directory = os.path.dirname(path)
     name = os.path.basename(path)
@@ -187,10 +222,9 @@ def detect_archive_set(path: str) -> ArchiveSet:
         return _numeric_set(directory, match, names)
     match = _CLASSIC_R_RE.match(name)
     if match:
-        if (
-            match.group("letter").casefold() == "z"
-            and _z_volume_is_zip(directory, match.group("base"))
-        ):
+        if not _classic_rar_has_main_volume(directory, match):
+            return _standalone_set(path)
+        if match.group("letter").casefold() == "z":
             return _zip_split_set(directory, match.group("base"), names)
         return _classic_rar_set(directory, match.group("base"), names)
     match = _ZIP_Z_RE.match(name)
@@ -198,6 +232,8 @@ def detect_archive_set(path: str) -> ArchiveSet:
         match
         and _volume_index(match.group("index"), minimum=1) is not None
     ):
+        if not _zip_split_has_main_volume(directory, match):
+            return _standalone_set(path)
         return _zip_split_set(directory, match.group("base"), names)
     match = _ARJ_A_RE.match(name)
     if (
@@ -249,6 +285,38 @@ def _numeric_child_is_standalone(path: str) -> bool:
         and index > 1
         and has_independent_archive_structure(path)
     )
+
+
+def _named_volume_is_independent(path: str) -> bool:
+    name = os.path.basename(path)
+    if any(pattern.match(name) for pattern in (
+        _NUMERIC_RE, _PART_RAR_RE, _CLASSIC_R_RE, _ZIP_Z_RE, _ARJ_A_RE, _SWM_RE
+    )):
+        if has_independent_archive_structure(path):
+            return True
+    match = _CLASSIC_R_RE.match(name) or _ZIP_Z_RE.match(name)
+    if match:
+        suffix = ".zip" if name.casefold().rsplit(".", 1)[-1].startswith("z") else ".rar"
+        main = os.path.join(os.path.dirname(path), match.group("base") + suffix)
+        return has_independent_archive_structure(main)
+    return False
+
+
+def _classic_or_zip_child_is_standalone(path: str) -> bool:
+    """Return whether a ``.rNN``/``.zNN``-looking file is a complete package.
+
+    Such a name normally identifies a volume of a multi-volume set, but the
+    same name may carry a self-contained archive.  When it does, the file is
+    the package and must keep its own identity rather than being folded into
+    a sibling set (which would silently drop it as a duplicate).
+    """
+
+    name = os.path.basename(path)
+    match = _CLASSIC_R_RE.match(name)
+    if not match:
+        return False
+    index = _classic_rar_index(match)
+    return index > 0 and has_independent_archive_structure(path)
 
 
 def _indexed_members(
@@ -474,10 +542,39 @@ def _volume_index(raw: str, minimum: int = 0) -> Optional[int]:
     return value
 
 
-def _z_volume_is_zip(directory: str, base: str) -> bool:
+def _zip_split_has_main_volume(directory: str, match: re.Match) -> bool:
+    """Return whether a split-ZIP main volume is present for *match*.
+
+    A ``.zNN`` file belongs to the split-ZIP set of the same base name only
+    when that set's terminal ``.zip`` volume exists.  Without it the file is a
+    package in its own right and must not be merged into (or deduplicated
+    against) anything else.
+    """
+
+    base = match.group("base")
     zip_main = os.path.join(directory, base + ".zip")
+    if os.path.exists(zip_main):
+        return True
+    # A ``.zNN`` continuation can also belong to a .rar set when that main
+    # volume exists and no .zip volume does.
     rar_main = os.path.join(directory, base + ".rar")
-    return os.path.exists(zip_main) or not os.path.exists(rar_main)
+    return os.path.exists(rar_main) and not os.path.exists(zip_main)
+
+
+def _classic_rar_has_main_volume(directory: str, match: re.Match) -> bool:
+    """Return whether a classic .rar/.rNN set exists for *match*.
+
+    ``.rNN``/``.zNN`` names only identify a volume of a set; without the main
+    ``.rar`` volume (or, for ZIP sets, the terminal ``.zip`` volume) the file
+    is an independent package.
+    """
+
+    base = match.group("base")
+    if os.path.exists(os.path.join(directory, base + ".rar")):
+        return True
+    if match.group("letter").casefold() == "z":
+        return os.path.exists(os.path.join(directory, base + ".zip"))
+    return False
 
 
 def group_into_sets(paths: Iterable[str]) -> Tuple[List[ArchiveSet], List[str]]:

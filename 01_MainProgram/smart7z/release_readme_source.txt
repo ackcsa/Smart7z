@@ -1,51 +1,59 @@
-Smart 7z Ultra __VERSION__ 源码版
-================================
+Smart7z __VERSION__ 源码版
+========================
 
 内容
 ----
-- 包含 Smart7z 一方 Python 源码、测试、构建脚本、资源模板和用户手册。
-- 不包含 build、release、虚拟环境、离线构建工具、缓存或运行时恢复记录。
-- resources/code.txt 为空，resources/smart7z_config.json 默认保留源压缩包。
-
-本次更新
---------
-- 修复 7-Zip SLT 清单的空路径根目录元记录被当成实际成员、导致部分 ZIP 以 INTERNAL_ERROR 失败的问题，并增加解析与真实解压回归。
-- 修复 Qt 菜单栏固定高度造成的文字裁切，补充菜单几何、文件和目录拖放测试。
-- 新增 `launch_ipc.py` 作为无 Qt、无完整运行时模型的轻量转发边界；无实例时用命名互斥量快速退出探测，异常诊断依赖改为按需导入。
-- 隐写深度扫描依赖改为实际扫描时按需导入；新增 `DeferredLineEdit`，在首次交互前保持原有文本、信号、焦点顺序与辅助功能语义，但延后原生 QLineEdit 构造。
-- 全局字体与基础颜色改由 QApplication 字体和调色板设置，删除作用于所有控件的通用样式规则。
-- 启动参数延后到 IPC 成功监听后激活；关闭结果传播调度器与 IPC 的真实停止状态，待分发 ticket 会在关闭时取消。
-- 首次右键窗口的启动置前不再解除自动关闭；后续外部激活仍会解除，保持用户主动查看时不自动退出。
-- 修复嵌套深度 0、一次性密码清理、源包大小升序、输入选中态和深度步进器样式等回归。
-- 菜单栏新增“文件扫描模式”三级互斥对钩菜单与“选项 → 空间不足时等待”，并删除工具栏重复按钮；默认选择 SteganographierGUI 兼容模式。
-- 兼容探测器支持普通 MP4 追加 ZIP、ZArchiver free 原子和 MKV ZIP 附件；通过 BMFF/EBML 跳读与限定区间 ZIP 校验避免全文件读取。
-- 严格校验非饱和经典字段 ZIP64 的记录、定位器和中央目录几何；深度扫描与直接输入优先复用兼容候选，屏蔽随机 RAR/7z/ZIP 诱饵。
-- 修复兼容模式扫描任务丢弃预计算候选的执行器准入缺口；已确认的候选现在直接进入安全切割，超过 4 GB 的 MP4 载体不会再以 NOT_ARCHIVE 结束。
-- 深度扫描改为单轮流式候选预检和复用，并增加非常驻文件扫描进度。
-- 任务详情区可调高度，任务默认按源包大小升序执行，密码提示完成后自动恢复布局。
-- 自动候选耗尽后的手动密码重试只使用本次输入，不再重复读取会话密码和密码本。
-- 修复隐写候选处理后可能遗留空 stego 会话目录的问题，并保持对未登记内容、链接和重解析点的保留策略。
-- 安装模式可继续使用旧安装地址中的非空密码本，不会被新位置的空占位替代。
-- 嵌套扫描增加普通 PE 目录保护，并为改名压缩包及高置信度 ZIP/7z SFX 保留内容优先例外。
-- 修复关闭阶段右键请求与单实例恢复日志锁的接管竞态。
-- 复用完整加密清单，优先本批次成功密码，并避免已确认加密包的无密码解压尝试。
-- 使用有界流式 SLT 解析，在条目超限时提前终止 7-Zip；内部解析安全上限为 200000，配置更高也不会绕过；保留完整安全预检语义。
-- 增加列表、解析、预检、解压、输出扫描和总耗时指标。
-- 收窄格式回退：自动识别失败后只做一次有签名或扩展名依据的 ZIP/RAR/7z 重试。
+- 平铺的一方 Python 源码、tests、构建文件、资源模板、用户手册和 CHANGELOG.md，不是完整 Git 仓库。
+- licenses 与 corresponding-source 保存第三方许可证和对应源码，另见 THIRD_PARTY_NOTICES.txt。
+- 不含 build、release、虚拟环境、离线构建工具、个人配置、密码或恢复记录。
+- resources/code.txt 为空；resources/smart7z_config.json 默认保留源包。
 
 运行
 ----
-1. 使用 64 位 Python 3.12，并安装 PySide6。
-2. 安装 7-Zip，或把 7z.exe 放在源码根目录。
-3. 在源码根目录运行 python smart7z.py。
-4. 图形界面使用 PySide6，拖拽由 Qt 原生支持。
+在 Windows 上使用 64 位 Python。本版开发基线为 Python 3.14.6、PySide6 6.11.1。
+在本文件所在目录执行：
 
-验证与构建
+    python -m venv .build-venv
+    .\.build-venv\Scripts\python.exe -m pip install -r requirements-build.txt
+    .\.build-venv\Scripts\python.exe smart7z.py
+
+安装 7-Zip，或把 7z.exe 放在源码根目录。仅运行程序不需要 Inno Setup 等打包工具。
+下面用 python 简写已选定环境中的解释器。
+
+验证
+----
+    python verify_project.py
+    python verify_project.py --suite integration
+    python verify_project.py --suite ui
+    python verify_project.py --suite release
+
+摘要和日志写入 .verification，可用 --report-dir 指定目录。
+--reuse 只复用 24 小时内输入、环境和测试选择一致的成功结果；测试数量以当前报告为准。
+Qt 测试需要 PySide6，真实解压需要 7-Zip，发布测试需要 Windows PowerShell。
+
+构建
+----
+    python verify_project.py --reuse --build
+
+- 入口要求全量测试通过且零跳过。已有 build 或同版本发布物时会停止，先核对并归档旧产物及校验清单。
+- 不要用直接调用 build_release.ps1 绕过保护，它会清理对应的已有输出。
+- 还需 PowerShell 7、Inno Setup、64 位 .NET Framework C# 编译器，以及完整 7-Zip 发行目录（7z.exe、7z.dll、License.txt）。
+- Qt/PySide 官方源码归档放入 .license-cache 或 .build-tools\qt-source，固定名称与 SHA-256 见 build_release.ps1。
+- corresponding-source 中的展开源码供阅读和许可证合规使用，不能替代上述原始归档。
+- 构建输出为 release 中的安装器、便携 ZIP、源码 ZIP 和 SHA256SUMS-<版本>.txt。
+- 先更新代码、手册和 CHANGELOG.md，再验证、构建；旧发行物不会随文档修改自动更新。
+
+数据与行为
 ----------
-- 全量测试：python -m unittest discover -s tests -v
-- 真实 7-Zip 集成测试：python -m unittest tests.test_integration_real7z -v
-- 当前发布验证：390 项自动化测试及 155 个子测试全部通过。
-- 构建依赖：python -m pip install -r requirements-build.txt
-- 构建：powershell -ExecutionPolicy Bypass -File .\build_release.ps1
+- 源码配置模板在 resources；测试应使用独立临时目录，不写真实配置、密码本或恢复数据。
+- 清理策略在任务接收时固定；切换设置不影响任何已有任务。
+- 排队、等待和扫描也需要关闭确认，退出后未完成任务需要重新添加。
+- 安装、便携和源码副本在当前用户登录会话内共用窗口和队列；只有 IPC 连接信息共享，不合并其他数据。本版本没有多实例开关。
+- 启动失败可修正设置后重试；启动诊断默认关闭，暖启动结果不代表冷启动性能。
 
-完整中文说明见 Smart7z-User-Manual.html。
+文档
+----
+- 操作和错误说明：Smart7z-User-Manual.html
+- 版本变更：CHANGELOG.md
+- 仓库维护指南：https://github.com/ackcsa/Smart7z/blob/v__VERSION__/MAINTENANCE.md
+- 发行与校验清单：https://github.com/ackcsa/Smart7z/releases

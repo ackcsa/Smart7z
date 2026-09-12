@@ -82,6 +82,11 @@ USER_MESSAGE_TEMPLATES: Mapping[str, UserMessageTemplate] = MappingProxyType({
         "Settings could not be saved or applied; the queue was not started.",
         whole_line_red=True,
     ),
+    "CONFIG_APPLY_FAILED": UserMessageTemplate(
+        "设置未能保存或应用，已恢复上次设置。",
+        "Settings could not be saved or applied; previous settings were restored.",
+        whole_line_red=True,
+    ),
     "QUEUE_STARTED": UserMessageTemplate(
         "设置已保存，队列开始或继续处理。",
         "Settings were saved; queue processing started or resumed.",
@@ -91,8 +96,12 @@ USER_MESSAGE_TEMPLATES: Mapping[str, UserMessageTemplate] = MappingProxyType({
         "Cancellation was requested for the current job; its state will update after it stops.",
     ),
     "CANCEL_REMAINING": UserMessageTemplate(
-        "已取消当前任务以外的未完成任务和待处理扫描请求。",
-        "All unfinished jobs except the current job, plus pending scan requests, were cancelled.",
+        "已移除当前任务以外的未完成任务和待处理扫描请求。",
+        "All unfinished jobs except the current job, plus pending scan requests, were removed.",
+    ),
+    "CANCEL_SELECTED": UserMessageTemplate(
+        "已移除选中的未完成任务；正在执行的选中任务已请求停止。",
+        "Selected unfinished jobs were removed; selected active work was requested to stop.",
     ),
     "EXTERNAL_PATHS_RECEIVED": UserMessageTemplate(
         "已接收外部请求：文件 {file_count} 个，目录 {directory_count} 个；{mode_zh}。",
@@ -133,6 +142,16 @@ USER_MESSAGE_TEMPLATES: Mapping[str, UserMessageTemplate] = MappingProxyType({
         "Permanent fallback for Recycle Bin cleanup failed; stopped",
         whole_line_red=True,
     ),
+    "RECYCLE_FALLBACK_DISABLED": UserMessageTemplate(
+        "回收站不可用或容量不足，已保留 {count} 个源文件（可在设置中允许永久删除回退）",
+        "Recycle Bin unavailable or over capacity; kept {count} source item(s) (permanent-delete fallback can be allowed in Settings)",
+        red_terms=(
+            "回收站不可用或容量不足",
+            "已保留",
+            "Recycle Bin unavailable or over capacity",
+            "kept",
+        ),
+    ),
 })
 
 CLEANUP_NOTICE_CODES = frozenset({
@@ -140,6 +159,7 @@ CLEANUP_NOTICE_CODES = frozenset({
     "RECYCLE_FALLBACK_TOO_LARGE",
     "RECYCLE_FAILED",
     "RECYCLE_FALLBACK_DELETE_FAILED",
+    "RECYCLE_FALLBACK_DISABLED",
 })
 
 _MESSAGE_CODE_RE = re.compile(r"\[([A-Z][A-Z0-9_]*)\](?=\s*(?:\||$))")

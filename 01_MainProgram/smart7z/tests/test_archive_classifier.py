@@ -359,7 +359,7 @@ class TestAutomaticDiscoveryIntegration(unittest.TestCase):
                 "classic.rar": b"Rar!\x1a\x07\x01\x00main",
                 "classic.r00": b"Rar!\x1a\x07\x01\x00child",
                 "split.z01": b"PK\x03\x04child",
-                "split.zip": b"PK\x05\x06" + (b"\x00" * 18),
+                "split.zip": b"PK\x05\x06\x01\x00\x01\x00" + (b"\x00" * 14),
                 "legacy.arj": b"`\xeamain",
                 "legacy.a01": b"`\xeachild",
                 "image.swm": b"MSWIM\x00\x00\x00main",
@@ -386,12 +386,11 @@ class TestAutomaticDiscoveryIntegration(unittest.TestCase):
 
             count = extractor.scan_and_submit(Job(path="parent.zip"), temp_dir)
 
-            self.assertEqual(count, 7)
+            self.assertEqual(count, 6)
         self.assertEqual(
             {job.original_basename for job in submitted},
             {
                 "numeric.001",
-                "numeric.002",
                 "parts.part01.rar",
                 "classic.rar",
                 "split.zip",
@@ -568,6 +567,30 @@ class TestAutomaticDiscoveryIntegration(unittest.TestCase):
                 )
             )
         )
+
+
+class TestLooseZipEvidence(unittest.TestCase):
+    """Bare PK markers must not be enough to queue a file on their own."""
+
+    def test_zip_bytes_without_central_directory_do_not_queue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "clip.bin")
+            payload = bytearray(b"\x00" * 200_000)
+            payload[5_000:5_004] = b"PK\x03\x04"
+            with open(path, "wb") as stream:
+                stream.write(payload)
+            decision = classify_automatic_candidate(path)
+        self.assertFalse(decision.should_queue)
+        self.assertEqual(decision.reason, "no_archive_structure")
+
+    def test_real_zip_with_central_directory_still_queues(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "clip.bin")
+            with zipfile.ZipFile(path, "w") as writer:
+                writer.writestr("payload.txt", b"data")
+            decision = classify_automatic_candidate(path)
+        self.assertTrue(decision.should_queue)
+        self.assertEqual(decision.reason, "content_archive")
 
 
 if __name__ == "__main__":
