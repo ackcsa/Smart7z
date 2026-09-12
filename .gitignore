@@ -2,12 +2,23 @@
 /shuorenhua/
 /二维码自动解析-修复版.user.js
 
+# Unrelated artifacts produced inside this shared workspace
+/.artifact_spreadsheet_build/
+/outputs/
+
+# Local-only working directories: review evidence, code index, agent state.
+# These are large (several GB) and machine-specific; they must never be staged.
+/.sandbox-test/
+/.codegraph/
+/.workbuddy/
+
 # Local build toolchains and environments
 /01_MainProgram/smart7z/.build-tools/
 /01_MainProgram/smart7z/.build-venv/
 /01_MainProgram/smart7z/.license-cache/
 /01_MainProgram/smart7z/build/
 /01_MainProgram/smart7z/release/
+/01_MainProgram/smart7z/.verification/
 
 # Python caches and test artifacts
 __pycache__/
