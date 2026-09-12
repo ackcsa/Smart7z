@@ -1,0 +1,38 @@
+# Line-ending policy.
+#
+# This is a Windows-first repository that gets copied between machines, and it
+# had no policy at all: every `git diff` printed "LF will be replaced by CRLF",
+# and a checkout on another machine produced whitespace-only diffs.
+#
+# Text files are normalised to LF inside the repository. The working-tree style
+# is then chosen per file type below. `.gitattributes` takes precedence over
+# core.autocrlf, so the result no longer depends on each machine's settings.
+
+* text=auto eol=lf
+
+# Windows-native scripts and installer definitions keep CRLF, matching what the
+# tools that read them expect.
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.iss  text eol=crlf
+*.isl  text eol=crlf
+*.cs   text eol=crlf
+
+# Binary assets: never converted, never diffed as text.
+*.ico   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.exe   binary
+*.dll   binary
+*.pyd   binary
+*.zip   binary
+*.7z    binary
+*.rar   binary
+*.pdf   binary
+*.docx  binary
+*.whl   binary
+*.so    binary
+*.db    binary
