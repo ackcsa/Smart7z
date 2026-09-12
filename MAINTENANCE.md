@@ -145,16 +145,17 @@
 | `dd5f319` | `chore(git)`：`.gitignore` 补 `/.sandbox-test/`、`/.codegraph/`、`/.workbuddy/`，连同此前已改未提交的 `/.artifact_spreadsheet_build/`、`/outputs/`、`/01_MainProgram/smart7z/.verification/` 一起落库 |
 | `4b92c66` | `chore(git)`：新增 `.gitattributes` 行尾策略。文本在库内统一存 LF，Windows 脚本与 Inno 安装脚本保持 CRLF，二进制不转换；已用 `git add -n --renormalize` 验证无内容翻动 |
 | `9cff198` | `chore(repo)`：`发行版/`、`源码/` 移出跟踪并**移入回收站**（8 个文件、142.8 MB）。删除前登记了逐文件 SHA-256，见 `.sandbox-test/git-hygiene-20260912/removed-1.0.2-artifacts.md`；在改写历史之前可用 `git checkout f1bc086 -- 发行版 源码` 取回 |
+| `3bf8e07` | `docs`：`CHANGELOG.md`、`HANDOFF.md`、`MAINTENANCE.md`、`smart7z_user_manual.html` 四份核心文档首次入库；删除已被取代的 `SMART7Z_POST_REVIEW_PLAN.md` 与旧手册 `smart7z_user_manual .html`（文件名带空格）；README 重写 |
+| `9e99b73` | `fix(resources)`：清除被测试写入 `resources/smart7z_config.json` 的临时路径（`7z_path` 变成 `C:\7z.exe`、`target_dir`／`temp_dir` 指向 `%TEMP%`）。**这是会随包发出的产品资源模板**，现已恢复为空值，`allow_permanent_fallback` 键保留 |
+| `docs(maintenance)`（本节所在提交） | 记录本次仓库整洁化与剩余计划，改写「待决事项」第 2、3 条 |
 
 ### 待办（见「待决事项」第 2 条）
 
-1. 四份核心文档入库（`CHANGELOG.md`、`HANDOFF.md`、`MAINTENANCE.md`、`smart7z_user_manual.html`），同时删除已被取代的 `SMART7Z_POST_REVIEW_PLAN.md` 与 `smart7z_user_manual .html`（旧手册文件名里带空格）。
-2. 清除 `resources/smart7z_config.json` 里被测试写进去的临时路径（`7z_path` 变成 `C:\7z.exe`、`target_dir`／`temp_dir` 指向 `%TEMP%`）。**这是产品资源模板，会随包发出**；`allow_permanent_fallback` 这个新键要保留。
-3. 19 个已跟踪文件的 1.0.4 改动、4 个新源码文件、4 个新测试文件按方案分组提交，见 `.sandbox-test/git-hygiene-20260912/COMMIT_PLAN.md`。
+剩下的是一整批 1.0.4 代码改动：19 个已跟踪文件被改、4 个新源码文件、4 个新测试文件。分组方案与执行顺序见 `.sandbox-test/git-hygiene-20260912/COMMIT_PLAN.md`，需拍板的只有两件事——按哪套方案拆、以及是否要求每个提交单独跑一次测试。
 
 ### 三条硬约束
 
-1. **只做本地提交，不推送。** 远程 `origin` 停在 `f1bc086`，本地领先 5 个提交，推送是单独一次决定。
+1. **只做本地提交，不推送。** 远程 `origin` 停在 `f1bc086`；「已落库」那张表就是全部未推送的提交，推送是单独一次决定。
 2. **本轮不改写历史。** 仓库体积问题只做到"不再增长"，`filter-repo` 瘦身属独立一轮，见「待决事项」第 3 条。
 3. **全部提交完成、工作树干净之后**，再跑一次 `git checkout-index -f -a` 按新策略重写工作树行尾。**工作树 dirty 时不要跑**，它会把未提交内容覆盖掉。
 
