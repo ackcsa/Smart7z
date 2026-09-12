@@ -1,0 +1,1121 @@
+<!doctype html>
+<html lang="zh-CN" data-page-node-id="Jr3B2v4t88zqo6x0YMkPmd">
+<head data-page-node-id="9HFkDMMWlDwYJCoWmR8ihx">
+  <meta charset="utf-8" data-page-node-id="pRxGaUhlZSaHOIcpy43Dcl">
+  <meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="OIxirgY128JFoGbQQxIpKo">
+  <title>Smart7z 用户手册</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --paper: #ffffff;
+      --ink: #1f2937;
+      --muted: #5f6b7a;
+      --line: #d9dee8;
+      --soft: #eef2f7;
+      --soft-2: #f8fafc;
+      --accent: #0f766e;
+      --accent-2: #1d4ed8;
+      --warn: #b45309;
+      --danger: #b91c1c;
+      --ok: #15803d;
+      --code: #101828;
+      --code-bg: #f2f4f7;
+      --nav: #172033;
+      --nav-muted: #b9c3d3;
+      --shadow: 0 16px 50px rgba(15, 23, 42, .08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.68;
+    }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, kbd {
+      font-family: Consolas, "SFMono-Regular", Menlo, monospace;
+      background: var(--code-bg);
+      color: var(--code);
+      border: 1px solid #e2e8f0;
+      border-radius: 5px;
+      padding: .08rem .32rem;
+      font-size: .93em;
+    }
+    pre {
+      margin: 1rem 0;
+      padding: 1rem 1.1rem;
+      overflow: auto;
+      border-radius: 8px;
+      background: #101828;
+      color: #e6edf7;
+      line-height: 1.55;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+    }
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: .92rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 1.35rem;
+      font-size: .95rem;
+      background: var(--paper);
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: .62rem .72rem;
+      vertical-align: top;
+    }
+    th {
+      background: #edf2f7;
+      color: #111827;
+      text-align: left;
+      font-weight: 700;
+    }
+    tr:nth-child(even) td { background: #fbfcfe; }
+    .layout {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      background: var(--nav);
+      color: #fff;
+      padding: 1.35rem 1.15rem 2rem;
+    }
+    .brand {
+      display: block;
+      margin: .15rem 0 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(255,255,255,.12);
+    }
+    .brand strong {
+      display: block;
+      font-size: 1.25rem;
+      letter-spacing: 0;
+    }
+    .brand span {
+      display: block;
+      margin-top: .25rem;
+      color: var(--nav-muted);
+      font-size: .86rem;
+    }
+    .toc-title {
+      margin: .9rem 0 .35rem;
+      color: #e8edf6;
+      font-size: .78rem;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      font-weight: 700;
+    }
+    .toc a {
+      display: block;
+      padding: .28rem .3rem;
+      color: var(--nav-muted);
+      border-radius: 6px;
+      font-size: .91rem;
+    }
+    .toc a:hover {
+      color: #fff;
+      background: rgba(255,255,255,.08);
+      text-decoration: none;
+    }
+    .toc .sub { padding-left: 1rem; font-size: .84rem; }
+    .content {
+      width: 100%;
+      min-width: 0;
+      max-width: 1180px;
+      overflow-wrap: anywhere;
+      margin: 0 auto;
+      padding: 2.2rem 2.6rem 4rem;
+    }
+    .hero {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 2rem;
+      box-shadow: var(--shadow);
+      margin-bottom: 1.4rem;
+    }
+    .hero h1 {
+      margin: 0 0 .7rem;
+      font-size: 2.15rem;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+    .hero p { margin: .5rem 0; color: var(--muted); }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .55rem;
+      margin-top: 1rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      padding: .26rem .58rem;
+      border-radius: 999px;
+      background: var(--soft);
+      border: 1px solid var(--line);
+      font-size: .86rem;
+      color: #334155;
+    }
+    section {
+      margin: 1.35rem 0;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 1.35rem 1.55rem;
+      box-shadow: 0 6px 22px rgba(15, 23, 42, .045);
+      scroll-margin-top: 1rem;
+    }
+    section section {
+      margin: 1rem 0;
+      padding: 1rem 1.1rem;
+      box-shadow: none;
+      background: var(--soft-2);
+    }
+    h2 {
+      margin: 0 0 .85rem;
+      font-size: 1.45rem;
+      line-height: 1.3;
+      color: #111827;
+    }
+    h3 {
+      margin: .95rem 0 .55rem;
+      font-size: 1.08rem;
+      line-height: 1.35;
+      color: #172033;
+    }
+    h4 {
+      margin: .75rem 0 .4rem;
+      font-size: .98rem;
+      color: #1f2937;
+    }
+    .lead { color: var(--muted); margin-top: -.2rem; }
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .75rem;
+      margin-top: 1rem;
+    }
+    .jump-card {
+      padding: .85rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .jump-card strong { display: block; margin-bottom: .25rem; }
+    .jump-card span { display: block; color: var(--muted); font-size: .9rem; }
+    .notice {
+      margin: 1rem 0;
+      padding: .85rem 1rem;
+      border-left: 4px solid var(--accent);
+      background: #ecfdf5;
+      border-radius: 7px;
+    }
+    .notice.warn {
+      border-left-color: var(--warn);
+      background: #fff7ed;
+    }
+    .notice.danger {
+      border-left-color: var(--danger);
+      background: #fef2f2;
+    }
+    .notice.info {
+      border-left-color: var(--accent-2);
+      background: #eff6ff;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 1rem;
+    }
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+    .mini-card {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: .9rem;
+    }
+    .mini-card h4 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      margin: 0 .18rem .18rem 0;
+      padding: .12rem .45rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      color: #334155;
+      font-size: .82rem;
+      white-space: nowrap;
+    }
+    .tag.ok { color: var(--ok); border-color: #bbf7d0; background: #f0fdf4; }
+    .tag.warn { color: var(--warn); border-color: #fed7aa; background: #fff7ed; }
+    .tag.danger { color: var(--danger); border-color: #fecaca; background: #fef2f2; }
+    .step-list {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+      margin: .8rem 0;
+    }
+    .step-list li {
+      counter-increment: step;
+      position: relative;
+      padding: .68rem .75rem .68rem 3rem;
+      margin-bottom: .55rem;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    .step-list li::before {
+      content: counter(step);
+      position: absolute;
+      left: .75rem;
+      top: .68rem;
+      width: 1.55rem;
+      height: 1.55rem;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .flow {
+      margin: 1rem 0;
+      padding: .9rem;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .flow-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .45rem;
+      align-items: center;
+    }
+    .node {
+      padding: .45rem .6rem;
+      border-radius: 7px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      font-size: .88rem;
+      white-space: nowrap;
+    }
+    .arrow { color: #64748b; }
+    .kbd-row kbd { margin-right: .25rem; }
+    .small { font-size: .88rem; color: var(--muted); }
+    .source-list li { margin-bottom: .35rem; }
+    .toplink {
+      display: inline-block;
+      margin-top: .8rem;
+      font-size: .86rem;
+    }
+    .checklist li { margin-bottom: .35rem; }
+    .compact td, .compact th { padding: .45rem .55rem; }
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: minmax(0, 1fr); }
+      .sidebar { position: relative; height: auto; }
+      .content { padding: 1.2rem; }
+      .quick-grid, .two-col, .three-col { grid-template-columns: 1fr; }
+      table { display: block; max-width: 100%; overflow-x: auto; }
+      th, td { min-width: 7rem; }
+      section, .hero { padding: 1rem; }
+      section section { padding: .8rem; }
+      .tag, .node { white-space: normal; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+    @media print {
+      .layout { display: block; }
+      .sidebar { display: none; }
+      .content { max-width: none; padding: 0; }
+      section, .hero { box-shadow: none; break-inside: avoid; }
+      a { color: #000; text-decoration: none; }
+    }
+  </style>
+</head>
+<body data-page-node-id="CBDMf1dAkq75FHpfjqc6Qz">
+  <div class="layout" id="top" data-page-node-id="zqV6eiQosFeh6mXfmSBlyB">
+    <aside class="sidebar" data-page-node-id="VT8dNws6RufgfkKB9COE02">
+      <div class="brand" data-page-node-id="ANeSMAqKD4qGiUFZFA6F7C">
+        <strong data-page-node-id="UkwpKvAmaSI735PDN187WM">Smart7z 手册</strong>
+        <span data-page-node-id="3uLF113chmM6IgcX3HL8EH">从安装到日常使用</span>
+      </div>
+      <nav class="toc" aria-label="目录" data-page-node-id="E3MwUED9N7cTMFZtM6RvJp">
+        <div class="toc-title" data-page-node-id="A542HhU79tN6AyMFp7yGc3">快速入口</div>
+        <a href="#read-me-first" data-page-node-id="9cICxOCbLBkYPG2bNpQf5i">开始前请确认</a>
+        <a href="#quick-start" data-page-node-id="Ce0EH34eSCDGPPCHxdDNeT">快速开始</a>
+        <a href="#common-recipes" data-page-node-id="hyFPpwQil7A2slmD0hE24f">常见任务</a>
+        <a href="#troubleshooting" data-page-node-id="ilpIi2fy23w8adVTHvWYjk">故障排查</a>
+        <div class="toc-title" data-page-node-id="mb7aee4P9Kj0FxbSbKdNDZ">上手</div>
+        <a class="sub" href="#install" data-page-node-id="NtetsHHzyVvjJljGUUMfCK">安装与运行</a>
+        <a class="sub" href="#ui-map" data-page-node-id="GDEXIuV4etGq8Iy2HJKJvD">界面一览</a>
+        <a class="sub" href="#run-log" data-page-node-id="75kcksHGVklTQtNkMKwDMr">运行日志怎么读</a>
+        <a class="sub" href="#inputs" data-page-node-id="sDCUkr3HHAqP26Gn94bGgD">把文件加进来</a>
+        <div class="toc-title" data-page-node-id="ywelFv0Go7ZSWoyV3yZGVR">解压选项</div>
+        <a class="sub" href="#options" data-page-node-id="q05CkQhJFJEFHdsSPafI0J">选项总览与生效时机</a>
+        <a class="sub" href="#options-destination" data-page-node-id="fQhbaNzRqINMDNiH7JN0Ja">输出位置</a>
+        <a class="sub" href="#options-staging" data-page-node-id="Qvh0tJFXmbhrdtf3QNUMk3">暂存模式</a>
+        <a class="sub" href="#options-space" data-page-node-id="nLu4O2u0GqTo8YywFO7cjh">空间不足时等待</a>
+        <a class="sub" href="#options-deep" data-page-node-id="4vwCjdVmTzP9FsS9VMAjXx">扫描模式</a>
+        <a class="sub" href="#options-nested" data-page-node-id="hIdHb7RmcOFmY55XAoEgu9">嵌套解压</a>
+        <a class="sub" href="#options-cleanup-fallback" data-page-node-id="isB49uERwbWlALICNpmHU9">永久删除回退</a>
+        <a class="sub" href="#options-safety" data-page-node-id="i7mY08ZjwIdzWussBrs4vU">安全预检与自动跳过</a>
+        <div class="toc-title" data-page-node-id="CQdbMGG7FDwGYCG2FG8Cdz">场景</div>
+        <a class="sub" href="#workflow-normal" data-page-node-id="GSt4KTbljouUqaYm8TXIhy">普通解压</a>
+        <a class="sub" href="#workflow-password" data-page-node-id="8Aolpg7eH1W97dfvJLcAB6">密码压缩包</a>
+        <a class="sub" href="#workflow-multipart" data-page-node-id="CWI96qGd6fIp853w0jxNiN">分卷压缩包</a>
+        <a class="sub" href="#workflow-folder" data-page-node-id="DsK3eLs06npJLiPmCwnLNr">扫描文件夹</a>
+        <a class="sub" href="#workflow-stego" data-page-node-id="E4Mp6D1SqR4w3mCKy8D1VA">伪装文件与内嵌 ZIP</a>
+        <a class="sub" href="#workflow-nested" data-page-node-id="3hp0GwBSBzU3nCp6DVm3zd">嵌套解压的边界</a>
+        <div class="toc-title" data-page-node-id="B0duXi3U2ZQfSMBHJCqAfU">清理与安全</div>
+        <a class="sub" href="#cleanup" data-page-node-id="KIlm5BDHybZHzCSC9CkLLJ">源文件清理</a>
+        <a class="sub" href="#recovery" data-page-node-id="0e0fhkJfzZFPjEk33mhYAd">恢复与临时文件</a>
+        <a class="sub" href="#cli-ipc" data-page-node-id="sRpy4z9etGhOaBNkJ9QqVy">命令行、单实例与右键菜单</a>
+        <a class="sub" href="#cancel-close" data-page-node-id="oBdKh72tZDUQC4hhHjFoe9">取消与关闭</a>
+        <div class="toc-title" data-page-node-id="I4ZPN2CDxpjRDuEB8j5OCS">参考</div>
+        <a class="sub" href="#state-reference" data-page-node-id="bsppI3Fvt9BO5yVgLRBPMq">任务状态与错误</a>
+        <a class="sub" href="#appendix" data-page-node-id="RR6eSNpHpkeItwLWuUfhct">术语速查</a>
+      </nav>
+    </aside>
+
+    <main class="content" data-page-node-id="WYmGu60WyFXlR1cuVtZK8h">
+      <div class="hero" data-page-node-id="UYFPu9cy7KgQ3uOKNO639Y">
+        <h1 data-page-node-id="41aIRQOa2bA6Ey6RTFJoX3">Smart7z 用户手册</h1>
+        <p data-page-node-id="4LdO9ztiY1LwLS6HFM7MuF">Smart7z 是一个面向 Windows 的批量解压工具：把一堆压缩包丢给它，它排队逐个处理——识别分卷、试密码、解压、校验，全部通过才把文件放到最终位置，然后按你的选择处理源压缩包。</p>
+        <p data-page-node-id="S5CbLb1mYs47MBLYJpqisT">它能处理分卷压缩包、加密压缩包、藏在 MP4/MKV 里的内嵌 ZIP，以及压缩包里套着的压缩包。</p>
+        <div class="meta" data-page-node-id="JDowZyGcJ89m9A2i3oLSuM">
+          <span class="pill" data-page-node-id="cCJj5RaWbupKvz7BDJUYCV">窗口名称：Smart 7z Ultra</span>
+          <span class="pill" data-page-node-id="Wxs6qp45BYkHfdlhImOTdH">适用平台：Windows</span>
+          <span class="pill" data-page-node-id="FHwJam5XHJTESwqTeZyjqV">安装/便携版：自带 7-Zip</span>
+          <span class="pill" data-page-node-id="45A4Sf2umYY7cEVOE004CJ">图形界面：PySide6 / Qt</span>
+        </div>
+      </div>
+
+      <section id="read-me-first" data-page-node-id="AaAZxks27Q58iN0Uzdav0s">
+        <h2 data-page-node-id="oqddXsvZoUm0BXIjaKk96G">开始前请确认</h2>
+        <p class="lead" data-page-node-id="ZKx2q9D94nqJxpXULpsLVE">三件事值得在第一次解压前花一分钟弄清楚。</p>
+        <div class="quick-grid" data-page-node-id="5jRHVBpavQh7e24q5MAA1w">
+          <a class="jump-card" href="#quick-start" data-page-node-id="UQn5oHbE3HiRgTqGPB2tFn"><strong data-page-node-id="XrpS0l0W3Tqv37XBk33PT3">直接开始</strong><span data-page-node-id="619fslBqloTxHfFqe41wQ1">五分钟内跑通第一次解压。</span></a>
+          <a class="jump-card" href="#options" data-page-node-id="Txw8vit5csaNQQb0YHREH6"><strong data-page-node-id="LK2VwyxCxakhAfCxQJ4Qob">弄清选项</strong><span data-page-node-id="3LdkjEQCkz3sYRTcYHkaSz">输出位置、暂存模式、清理策略，尤其后者。</span></a>
+          <a class="jump-card" href="#troubleshooting" data-page-node-id="I3ekmmH7By0W7kAwyQwVWb"><strong data-page-node-id="K1QU8CQTvmzMv7aqLwwjND">出问题时</strong><span data-page-node-id="zKQZYrwXkuzyGFuq0ftmMf">按现象查表，多数情况有现成答案。</span></a>
+        </div>
+        <div class="notice warn" data-page-node-id="waWiwOu42eOKRkM76IaRTl">
+          <strong data-page-node-id="Zo6UBABQ2l5H5QD7C2fWEb">默认保留源文件：</strong>安装版、便携版和源码版的首次运行配置都使用 <code data-page-node-id="w7tapAOAkpEr019et5cUez">cleanup_policy=keep</code>，不会自动清理源压缩包。需要清理时必须明确选择“回收站”或“永久删除”；第一次使用永久删除前应在常驻的 <a href="#options" data-page-node-id="t4DiPsvbpc7mepTuetfq9A">解压选项</a> 行核对设置。
+        </div>
+        <div class="notice info" data-page-node-id="Rkmakw2TGgwG08PGKhcO8C">
+          <strong data-page-node-id="SQUrl17foFkWCW7vfjMiFz">外部任务不会沿用窗口中的清理选项：</strong>普通命令行和未指定清理参数的第二个程序实例默认使用 <code data-page-node-id="scG96z7T0EILADEFcxNfaz">keep</code>。右键菜单会分别提供“智能解压到此文件夹”和“智能解压到此文件夹并删除”：前者保留源文件，后者使用 <code data-page-node-id="dhWpm2njRHOmbqrgtvBxV3">permanent</code>，成功后永久删除源文件。图形界面中添加的任务仍会记住入队时所选的清理策略。
+        </div>
+        <div class="notice" data-page-node-id="xJ0LmHTWhMCDbUJtnpsDEW">
+          <strong data-page-node-id="4OeWNndtNpyEUrfib2jtmM">完整成功才交付：</strong>每个任务的输出都先解压到临时位置，程序核对文件数量、大小和结构无误后才移到最终目录。没完全成功但还有救的输出，会放进“非完全恢复”目录单独保留，不会和正常结果混在一起。
+        </div>
+      </section>
+
+      <section id="quick-start" data-page-node-id="gAYLd4KJJvxCixAEKQPwSJ">
+        <h2 data-page-node-id="eZFEuu2ywMs2FsjAJQ2c9W">快速开始</h2>
+        <ol class="step-list" data-page-node-id="fIRvPW1xTAboHE4R7jPU8j">
+          <li data-page-node-id="xj1ecAv2LtQBoZiYeWg0dz"><strong data-page-node-id="rofqgPnUzUKpbvGU9yMu1Q">选版本、装程序。</strong>安装版从开始菜单启动；便携版先完整解压到可写目录再双击 <code data-page-node-id="5TLW8LT94ztBpLBjGyktFK">Smart7z.exe</code>；源码版进入源码目录运行 <code data-page-node-id="Bvufhvqm9ZHc5tUQ368z4g">python smart7z.py</code>（需要自备 7-Zip 和 PySide6）。</li>
+          <li data-page-node-id="TuBCpFxzFYigIXlxkYIoOE"><strong data-page-node-id="nnohXyb2n5rxCmS4Iot0Xu">定输出位置。</strong>勾选“解压到原目录”，输出就在每个压缩包旁边；取消勾选，全部输出进“目标目录”。</li>
+          <li data-page-node-id="GAOw7FG1RdvKNJoAAA5h3Y"><strong data-page-node-id="ZKQoTutFUGWRveoimCN3SF">看一眼清理策略。</strong>默认“保留”。改为“回收站”或“永久删除”会在完整成功且清理检查通过后移走或删除源包；第一次使用先保留，核对结果后再决定。</li>
+          <li data-page-node-id="wsqUhV9GZRMrra9Ohdc1jP"><strong data-page-node-id="lr4MSAKOcQaka4oKwCh3EZ">加文件。</strong>几个文件就拖进窗口；整个目录用“扫描文件夹”，程序自己挑出压缩包。</li>
+          <li data-page-node-id="8WmefNOA62nJRPyRA3YNxN"><strong data-page-node-id="CG0BpwQJHwawXmimz5dLVg">点“开始”。</strong>程序先保存设置再跑队列；同一时刻只处理一个任务，小文件优先。</li>
+        </ol>
+        <p class="small" data-page-node-id="SinLUIir2eWDsri6wUiaKp">已经开着 Smart7z 时再启动一次，新进程只会把路径转给现有窗口，不会开第二套队列。</p>
+        <pre data-page-node-id="OaYGfW3ab7rbZaxuumJtu8"><code data-page-node-id="fbsX4F4ejLCRDFCwhTWLEJ">cd &lt;Smart7z 源码目录&gt;
+python smart7z.py
+
+# 发送路径并自动开始
+python smart7z.py --start "D:/Downloads/example.7z"
+
+# 发送路径但只入队，等待你在窗口里点“开始”
+python smart7z.py --queue "D:/Downloads/example.7z"</code></pre>
+        <a class="toplink" href="#top" data-page-node-id="rCt20wy2d06mikDi4vAjAS">返回顶部</a>
+      </section>
+
+      <section id="install" data-page-node-id="EAbXo5DvNd8dtALXs78jaf">
+        <h2 data-page-node-id="QbnAJi7dRPX8oZ5f6LVgky">安装与运行</h2>
+
+        <h3 data-page-node-id="XpBouXO8Swp4c3a4NFvrK4">三个版本怎么选</h3>
+        <table data-page-node-id="VlNWtviaDIaiJrpQ00fsJl">
+          <thead data-page-node-id="caDYrOiruCa5PEmv9gneuJ"><tr data-page-node-id="J0ppw8EMHPjDqwm64jl8wH"><th data-page-node-id="DsyFaOHxQeLVAw7B4Gi5p3">版本</th><th data-page-node-id="QCGTXaf8r8iEH9jAIaR1Pe">适合谁</th><th data-page-node-id="RfpCKE0e3hE5Avv1CODxyE">数据放哪</th></tr></thead>
+          <tbody data-page-node-id="XDVlNWFIIPPRrNUjytdNbx">
+            <tr data-page-node-id="Scioea7b75Lb5GMUMyk5DZ"><td data-page-node-id="463EZkbPMMMZg9hihS99FA">安装版</td><td data-page-node-id="ttwdVaaGr28Hq3gDT6mbDL">固定在一台电脑上用。按当前用户安装，不需要管理员权限。</td><td data-page-node-id="2VXHZq4DpcjmZl6PFCrDbC"><code data-page-node-id="QDYGzEVnKEHHqTWmA3qXtN">%LOCALAPPDATA%/Smart7z</code>，卸载后配置和恢复数据仍在。</td></tr>
+            <tr data-page-node-id="BnwPYr9zs1aatqBObKfGM5"><td data-page-node-id="CW9d7Pokso1BOkzeMNxNRd">便携版</td><td data-page-node-id="HUxGFu6h4v7WkDwcJqmj4d">换机器、放 U 盘。ZIP 完整解压后运行，别改动目录结构。</td><td data-page-node-id="ispbCbZFX7v9aCit60UQ1d">EXE 目录（靠 <code data-page-node-id="S6sY5JDdk2leO4yu2mgfeq">portable.flag</code> 识别），配置、密码本、恢复状态全在便携目录里。</td></tr>
+            <tr data-page-node-id="Y0w3fcG6YwFKbHrGclnyTa"><td data-page-node-id="VCMSDD1yTaLMNYwh7m025U">源码版</td><td data-page-node-id="NZvTODrBwpKvtqaGVAqnSK">审阅、测试、二次开发。</td><td data-page-node-id="cn8qDkqH83SZphStpDjLAA">源码根目录的 <code data-page-node-id="5tG2AehFQCDy9Uxqlqlg90">resources</code>。发布包不含运行时恢复记录。</td></tr>
+          </tbody>
+        </table>
+        <p data-page-node-id="qIf9lGkEkMQJHjJIBl98zB">安装版和便携版自带 <code data-page-node-id="uxNxsj8TKsubsL1cBeK32x">7z.exe</code>；源码版要么装 7-Zip，要么把 <code data-page-node-id="iH4MwxFUOfsl9iGukFlVlO">7z.exe</code> 放到源码根目录。</p>
+
+        <h3 data-page-node-id="rb1tX3xYfKRlvDLSmBD4m8">第一次启动</h3>
+        <ul data-page-node-id="wx3kN9A742RwvhSaLa5Q9H">
+          <li data-page-node-id="mKWVB4Z8ozFUjbkIESELCq">源码版弹“找不到 7z.exe”：装 7-Zip，或放一份 <code data-page-node-id="2cGcljrDZCHBTfeJKmdMYF">7z.exe</code> 到源码根目录，重启程序。</li>
+          <li data-page-node-id="GYAW3HhEkeX2VHGcDxC7sG">点“开始”报配置保存失败：把目标目录、暂存目录、密码文件指到当前用户可写的位置。安装版查 <code data-page-node-id="Sgq6cBmUTg11xc3liKVEoH">%LOCALAPPDATA%/Smart7z</code>；便携版确认 EXE 目录可写（只读目录无法保存设置）。</li>
+          <li data-page-node-id="65o4IsH8KJTZ0KBzRgopmM">随附的 <code data-page-node-id="btshtb9PA6UARuxA1uIOhw">code.txt</code> 是空模板，需要自动试密码就按“一行一个”自己填。覆盖安装、升级不会动你已有的密码本，卸载也会保留。注意这是明文文件，别传到公共渠道。</li>
+        </ul>
+        <a class="toplink" href="#top" data-page-node-id="ypa4JTtPABSb0ljTb69YRu">返回顶部</a>
+      </section>
+
+      <section id="ui-map" data-page-node-id="dc5FqXpM7EifuJM8wUnHTw">
+        <h2 data-page-node-id="O4Hmr5dS2rPOF2v3p43NMb">界面一览</h2>
+        <p class="lead" data-page-node-id="8BR5djUQHVVC1cgHBi8cVz">窗口从上到下：菜单栏 → 主操作栏 → 解压选项 → 路径与密码 → 队列按钮 → 任务表 → 任务详情/运行日志。</p>
+
+        <h3 data-page-node-id="DTggUX7FEZIxdFOpoDe3Gw">菜单栏</h3>
+        <ul data-page-node-id="sanOb1PCri3lMKstro03GY">
+          <li data-page-node-id="XSaDS3KHlKvvf6HCTgjQJn"><strong data-page-node-id="vOF6qniQ0xg2U1gMhkxTFx">右键菜单</strong>：注册或移除 Windows 资源管理器的右键入口（详见<a href="#context-menu" data-page-node-id="ycnQP8IEjLfzKXyXE6QwsU">右键菜单</a>）。</li>
+          <li data-page-node-id="ZyS5bstIg4GEoDpwbEPJAG"><strong data-page-node-id="BjFElWtt7Q7cAsZv3qfHl8">文件扫描模式</strong>：三项永远只选一项，对勾标出当前模式。默认“仅兼容隐写者模式（非全读取）”，另两项是“深度扫描”和“普通模式”，详见<a href="#options-deep" data-page-node-id="yGWbPrk5pEsiD6DlHCE9q7">扫描模式</a>。</li>
+          <li data-page-node-id="oYEVALo27hWQB6D7G6yW5f"><strong data-page-node-id="kCHZ5yiYWxAODED1AdJXS0">选项 → 空间不足时等待</strong>：对勾开关，详见<a href="#options-space" data-page-node-id="vuxlqHeySmbz3fshuNxokj">空间不足时等待</a>。</li>
+        </ul>
+
+        <h3 data-page-node-id="nb0X2sMdcAcAGZSuXmdH8x">主操作栏与队列</h3>
+        <table data-page-node-id="AJLPuMelXllmziNDtpUGcG">
+          <thead data-page-node-id="9zIPGQhagjWn42mFARzHgN"><tr data-page-node-id="9oNYuQBcpihlCi3ttxNCnz"><th data-page-node-id="yPCOQrVGOROeqiXaIzBi6o">按钮</th><th data-page-node-id="0pqG8LwZJ0lDZJQOcMmJnC">做什么</th></tr></thead>
+          <tbody data-page-node-id="UvoUVDZu7MUyHvtEfVn9WV">
+            <tr data-page-node-id="ypjTlrlK0ReAcm8SanBDHO"><td data-page-node-id="iq0buAIHwgnpMM9tGXCYXH">添加文件</td><td data-page-node-id="K4ARkijXskel0O1p8eALSx">弹出文件选择框，可多选。只入队，不自动开始。</td></tr>
+            <tr data-page-node-id="1ASILikICsAcEQl1dZBIDs"><td data-page-node-id="PpNpxsSsFtAcQnErimmIQ0">扫描文件夹</td><td data-page-node-id="4x34MHdjitbqkeZeo5U4wJ">后台遍历目录，自动挑出压缩包入队。扫描期间显示当前进度，结束自动隐藏。</td></tr>
+            <tr data-page-node-id="WvqEvLUoFwS0jdqYoikEWD"><td data-page-node-id="xIIddyonjDU0y0GSlxQy1T">开始</td><td data-page-node-id="cbstxkyQAGQnpJe2dQIERH">保存设置，开始跑队列。</td></tr>
+            <tr data-page-node-id="czk7YAg9eBGjtQAGeVq0Wm"><td data-page-node-id="TFiy75c9F2hguJS6uAWX4z">取消当前</td><td data-page-node-id="Jx35SUMqzAfWAbgrVPEH1D">停掉正在处理的任务和它的 7-Zip 进程。</td></tr>
+            <tr data-page-node-id="7gFYrVUoIrp4CpXhzcy9gc"><td data-page-node-id="NJTQDa8Gib2SsfC9fIsd8w">取消所有</td><td data-page-node-id="Z4okZaxjZu47BsrfkKE1Fw">当前任务继续跑，其余未完成任务直接从列表移除；同时停掉目录扫描并清空待接纳请求。</td></tr>
+            <tr><td>取消选中</td><td>不想继续某几个任务时使用。移除选中的未完成任务；其中正在执行的任务先请求安全停止，不删除源压缩包。</td></tr>
+            <tr data-page-node-id="OtL625jXJKp7KEh0c9DyCh"><td data-page-node-id="eU0OW04M68bD86iSBZJ7m4">清除已完成</td><td data-page-node-id="0KqHByymABtdwWf7fydVPv">清掉已结束的历史任务行，方便查看剩余队列。只清列表，不动源文件和输出文件。</td></tr>
+          </tbody>
+        </table>
+
+        <h3 data-page-node-id="q4SdhnLF5J9F7mhmBYNDNO">解压选项、路径与密码</h3>
+        <p data-page-node-id="vVD500gsdg8HKJcDTFcN6d">“解压到原目录”决定输出位置（见<a href="#options-destination" data-page-node-id="HjHDSDHqdjdX32knNMoFAU">输出位置</a>）；不勾时用“目标目录”。暂存模式、嵌套解压见对应章节。“密码文件”指向保存在磁盘上的明文密码本；“主密码”是当前会话优先尝试的密码，不写入配置，但成功使用后可能写入密码本（见<a href="#workflow-password" data-page-node-id="Cnn7num0M6fuZtgrG3PpZ4">密码压缩包</a>）。</p>
+
+        <h3 data-page-node-id="rN6AEH7LCkYfF04j98VWVQ">任务表</h3>
+        <p data-page-node-id="hBRMt4otpC5xbFc5gIfP4M">界面不再提供状态过滤按钮，所有任务始终留在表里，默认按大小升序（小的先解压）。点列标题可换排序列或升降序。状态列的排序约定：中断、部分恢复、失败、需密码、等待中、处理中、完成。拖动任务表和详情区之间的分隔条可以调整详情区高度。</p>
+        <p class="small" data-page-node-id="QnHuxdgajF58zLZ5UeeFBn">工具栏不再提供手动暂停接收入口——它过去只延迟新增请求，不暂停当前解压，容易和“取消当前”混淆。扫描串行、IPC 排队和关闭时停止接收仍由程序自动处理。</p>
+
+        <h3 data-page-node-id="j6uuEP3vU7xN0hM9Dxf0oT">取消扫描后重新扫描</h3>
+        <p data-page-node-id="bnkJCsKERY2fV13Volx88W">目录扫描在后台跑，每次扫描有独立编号。点“取消所有”后当前编号作废，旧扫描迟到的结果不会混进新一批，可以放心立即重扫。</p>
+        <a class="toplink" href="#top" data-page-node-id="VOwHKiWlmqBCYRmzVKr7ii">返回顶部</a>
+      </section>
+
+      <section id="run-log" data-page-node-id="BxPQrpCmmWcHeIhvTHccQB">
+        <h2 data-page-node-id="tUNujsEgLAGrqxkaOpzSY6">运行日志怎么读</h2>
+        <p class="lead" data-page-node-id="HfHjqxomFZaMjYFaKYUwF9">日志只记需要你过目的事：失败、部分恢复、清理通知、外部请求。普通进度和成功完成看任务表就行，不刷屏。</p>
+
+        <h3 data-page-node-id="izp2EbyOAmdQWtVsTWT3jF">一行日志的格式</h3>
+        <pre data-page-node-id="2xPQRNWwy3DIDT7bcoQt7x"><code data-page-node-id="8QocBEPUys5PvzWNqVYPd1">[HH:MM:SS] {文件名}: 中文说明 / English message [MESSAGE_CODE] | {系统详情}</code></pre>
+        <ul data-page-node-id="iW5EEddnY80MWb81eub7cq">
+          <li data-page-node-id="kVsZBPoGqCNt4SUp4ArAkm">方括号里的代码（如 <code data-page-node-id="1eBmXYledHpa1A4rOj5ylW">JOB_FAILED</code>）稳定不变，拿它搜本手册最方便。</li>
+          <li data-page-node-id="CLzoIgpwf1FyuOHa4zfInM"><code data-page-node-id="uO6tcf55KqMZ96JDaHr04s">|</code> 后面是 Windows 或 7-Zip 的原始诊断，可能只有英文，程序原样保留。</li>
+        </ul>
+
+        <h3 data-page-node-id="rELZKxFDg4BIbD4ndNr89z">红色标记</h3>
+        <p data-page-node-id="xDAWR81wQoirzeweStoJcJ">红色帮你从批量日志里快速挑出异常，判断仍以文字和代码为准。整条红 = 已经失败需要处理；短语红 = 有需要确认的结果但程序还能继续；其余保持原色。</p>
+        <table class="compact" data-page-node-id="NyzkbuKjCwpEmVsJLiIgnB">
+          <thead data-page-node-id="AHKojnx02FGHOA1GyKyl5P"><tr data-page-node-id="Fd7PVwKgd93u6jytwLy3Gi"><th data-page-node-id="aFhzowNida4vwpDEOpwQEE">显示方式</th><th data-page-node-id="Eyq8uqCizoFIM5DGL4kKgX">消息代码</th></tr></thead>
+          <tbody data-page-node-id="udyyjzPnTKQjRtJNaij0Eq">
+            <tr data-page-node-id="Zekin5hcWYXgo0PX6o3WGi"><td data-page-node-id="I6mDtOIqVLPluYr1sgUWCQ">整条消息红色</td><td data-page-node-id="FW4vZy6GpHUqQWws1RlW4k"><code data-page-node-id="DjELLlIqojLGTls1bCHPN4">JOB_FAILED</code>、<code data-page-node-id="F6ODUrWkQNonHjAtRBatOW">ARCHIVE_BLOCKED</code>、<code data-page-node-id="6HTHMMCtN4bMoCFqJaaVUF">CONFIG_SYNC_FAILED</code>、<code data-page-node-id="gCujX3xUk3LuUD9HcBmhBO">RECYCLE_FAILED</code>、<code data-page-node-id="Y4DYasFGElcqkF1uTtZHfe">RECYCLE_FALLBACK_DELETE_FAILED</code></td></tr>
+            <tr data-page-node-id="BwHDHlM8TeoP76HXuAEoGa"><td data-page-node-id="BdcbLeP8Qm0QNHBoqzX9YY">重点短语红色粗体</td><td data-page-node-id="JBR8WaX441inG9xUZrGjXl"><code data-page-node-id="xfPccc2ZInDHtJx3Jtpi8w">RECOVERY_REVIEW</code>、<code data-page-node-id="gWNZh2DL91yGBeWHBAuI8T">INTAKE_FULL</code>、<code data-page-node-id="XFFyIX8kNqNXdfuxvaYBmc">SCAN_FAILED</code>、<code data-page-node-id="7uxr1BWiZ43IV45rl0IMw4">JOB_PARTIAL_RECOVERY</code>、<code data-page-node-id="Zu07iBaolFgueaFYDQyAPA">JOB_INTERRUPTED</code>、<code data-page-node-id="ylnKuVyrK8WLyeiPtNyEp9">JOB_PASSWORD_REQUIRED</code>、<code data-page-node-id="1ckKFFMAwv4trXbWLCW1bp">USER_NOTICE</code>、<code data-page-node-id="T2MGtBtKohIKvuJUnDBYsh">RECYCLE_FALLBACK_UNAVAILABLE</code>、<code data-page-node-id="bUrWKoEY4peU1av7hShFc0">RECYCLE_FALLBACK_TOO_LARGE</code>、<code data-page-node-id="yOkORrxjBOGyEYHDnvGJM7">RECYCLE_FALLBACK_DISABLED</code></td></tr>
+            <tr data-page-node-id="wzAx0dV0jX697C9OxkgopI"><td data-page-node-id="ItIlg7tGYlr6lMtCkcF3L5">保持原色</td><td data-page-node-id="8ZN1PSeA59UJNXAYp6ZZvg">其他代码（正常状态、操作确认和汇总）。</td></tr>
+          </tbody>
+        </table>
+        <p class="small" data-page-node-id="dszm8lLlEdp9cAy5mAlOLW">日志上限 500 行（满后每批移除最早的 100 行），单行最长 1600 字符。</p>
+
+        <h3 data-page-node-id="LrOjfYB1U8uwzQ20khD7sA">常规结果与用户操作</h3>
+        <table data-page-node-id="QmLi46HNJFlGCY9IXuytsI">
+          <thead data-page-node-id="i85EKDYGnZQ9RjAcmb9BlF"><tr data-page-node-id="mbrZQVCattXQHH6IRbKXBe"><th data-page-node-id="B1GA25wcomUfHvKbQtED0a">代码</th><th data-page-node-id="TsoXtQvg8sB2Rt90pQLrdH">界面显示</th><th data-page-node-id="mkqfzVEfKGsKVD4QFBEFEc">什么时候出现</th></tr></thead>
+          <tbody data-page-node-id="ZPXsc2Bq2835fDLpCMzfen">
+            <tr data-page-node-id="M3T69IiIOH186wJQmShNKK"><td data-page-node-id="Ty3op8GC2wuTS5tzOHsKys"><code data-page-node-id="92i71BCkJ619UZjsKQA2z9">APP_READY</code></td><td data-page-node-id="MjbaBYxAyYmrAMibz8kh72">Smart 7z Ultra 已就绪，任务将逐个处理。 / Smart 7z Ultra is ready; jobs will run one at a time. [APP_READY]</td><td data-page-node-id="qlvrMM2DEUkD960kDp4o0l">程序完成界面和调度器初始化。</td></tr>
+            <tr data-page-node-id="aVo4ZMrH4G2LEG6h6NTHRi"><td data-page-node-id="JHF640lokTl1OdLp2Gc6uu"><code data-page-node-id="rTVYyXUx2fwdRLruNsokOj">RECOVERY_AUTO_RESOLVED</code></td><td data-page-node-id="PQrg2wfnzKadIebCzR4c9R">启动恢复已自动处理 {count} 项。 / Startup recovery automatically resolved {count} item(s). [RECOVERY_AUTO_RESOLVED]</td><td data-page-node-id="Nyromop7wGipHDHpJrjPb4">启动时清掉过期记录、已确认归程序所有的临时内容，或把中断清理的源文件恢复到原位。</td></tr>
+            <tr data-page-node-id="Fd42Hqqmr1JL2hYTfhgYNR"><td data-page-node-id="AMb5KkdvQcbjgsvLmFlOy9"><code data-page-node-id="EiaO33udECYCCwktTF6wDz">RECOVERY_REVIEW</code></td><td data-page-node-id="HseKAc4bvsu2KBeZaPLSdY">启动恢复有一项需要核对，请保留相关文件。 / One startup recovery item needs review; keep the related files. [RECOVERY_REVIEW] | {系统详情}</td><td data-page-node-id="bGIoiWU9n6AVGKekQkNI1j">恢复模块不能安全地自动处理某一项，或把冲突文件转移到可见目录。</td></tr>
+            <tr data-page-node-id="jE8BJJ0rQMP6M9Mb0OmsCA"><td data-page-node-id="EmHv5JkD1Neb0FGlb8yM2n"><code data-page-node-id="zYlk8CuzSyxoD9lxTxO12C">RECOVERY_MORE</code></td><td data-page-node-id="7pmZSvaZ7UCpFcHamrEc0D">另有 {count} 项恢复结果未在这里展开，请查看恢复日志。 / {count} more recovery result(s) are omitted here; see the recovery journal. [RECOVERY_MORE] | {恢复日志路径}</td><td data-page-node-id="0bwIFtKvap4AluzmI1xp9p">仍留在恢复日志中的未处理结果超过 8 条。</td></tr>
+            <tr data-page-node-id="KYuAdmbKEv7GLTQwRehByz"><td data-page-node-id="lA4bkmlwmgMm5jCoovw9k3"><code data-page-node-id="S9jiwZ4AAyQDB19EB0SNnN">SCAN_COMPLETE</code></td><td data-page-node-id="qlmTqqjN9YWElks5HAL3wc">目录扫描完成，已提交约 {count} 个候选路径。 / Folder scan finished; about {count} candidate path(s) were submitted. [SCAN_COMPLETE]</td><td data-page-node-id="0GapoEVkPEWG8yTpN647oo">一次目录扫描正常结束；后续去重可能减少实际任务数。</td></tr>
+            <tr data-page-node-id="wJzksxh5D5nCv8Y0GO5Gty"><td data-page-node-id="ioqaPQgC40yJrWTtLjuIvv"><code data-page-node-id="m3ckd8suGMCARBybzYaBzD">QUEUE_STARTED</code></td><td data-page-node-id="sntRH8nIjkPMFajwxDOwul">设置已保存，队列开始或继续处理。 / Settings were saved; queue processing started or resumed. [QUEUE_STARTED]</td><td data-page-node-id="4avIthouxa7etzqewPX9XE">点击“开始”且设置保存、应用成功。</td></tr>
+            <tr data-page-node-id="Bpz57pd6qFDcC3QS6WjYMZ"><td data-page-node-id="DENU4Z4sVnYghvR6hLlqjr"><code data-page-node-id="1U9PgUpmhdKOns82je7PBx">CANCEL_CURRENT_REQUESTED</code></td><td data-page-node-id="Ts6DNMAPJIih8FsTPpkcjc">已请求取消当前任务；任务停止后会更新状态。 / Cancellation was requested for the current job; its state will update after it stops. [CANCEL_CURRENT_REQUESTED]</td><td data-page-node-id="sbqAwVygHXeQ8fmSUmQC2Q">点击“取消当前”。这条只表示请求已发出，不代表 7-Zip 已退出。</td></tr>
+            <tr data-page-node-id="Le8Q5tiHDdYdf0rIrFIJd3"><td data-page-node-id="IgTNiiVIGdLiATbTb2Kfqg"><code data-page-node-id="0AgRbZw7aCJqoYH5LPTDd5">CANCEL_REMAINING</code></td><td data-page-node-id="r2p7g0QS9DXZ84YPvKzW0c">已移除当前任务以外的未完成任务和待处理扫描请求。 / All unfinished jobs except the current job, plus pending scan requests, were removed. [CANCEL_REMAINING]</td><td data-page-node-id="pLsJ0XKHp2zGg4QejTTeNG">点击“取消所有”。未完成任务会直接从任务表移除，不保留“已中断”历史行。</td></tr>
+            <tr data-page-node-id="TIpuGcXD3LK2dw29SVIA4e"><td data-page-node-id="NGOq01SaFQ7sSgjspowJHq"><code data-page-node-id="k7sSj3qWaQkvljoIGnFL6B">EXTERNAL_PATHS_RECEIVED</code></td><td data-page-node-id="tTkddBf7AWLk19RAxrcJAG">{来源}: 已接收外部请求：文件 {file_count} 个，目录 {directory_count} 个；{mode_zh}。 / External request received: {file_count} file(s), {directory_count} folder(s); {mode_en}. [EXTERNAL_PATHS_RECEIVED]</td><td data-page-node-id="ORCRDKjGGg1sddfaURmYco">命令行、第二个实例或右键菜单提交一批路径。</td></tr>
+            <tr data-page-node-id="5uH3RIbfCulOvFHf1JajDP"><td data-page-node-id="7ddpswu7M2CD8jWx2qQb9t"><code data-page-node-id="DIX18mG3yBeIFUFJ5C2nzG">PASSWORD_PROMOTED</code></td><td data-page-node-id="YsDXiVesGEATlxxFCGHrjy">本次成功使用的密码已加入当前会话的优先候选；日志不记录密码。 / The successful password is now preferred for this session; its value is not logged. [PASSWORD_PROMOTED]</td><td data-page-node-id="zEQPpJ4ktcs1HEHH1ybXNt">加密任务完整成功，且成功密码与当前会话的优先密码不同；同一密码后续命中不重复记录。</td></tr>
+          </tbody>
+        </table>
+
+        <p><code>CANCEL_SELECTED</code>：已移除选中的未完成任务；正在执行的选中任务已请求停止。 / Selected unfinished jobs were removed; selected active work was requested to stop. [CANCEL_SELECTED]</p>
+        <h3 data-page-node-id="g7CDsAQQmOODQF8hhBbZZ4">需要处理的结果</h3>
+        <table data-page-node-id="W0wMm9j4nhEviB7ynlCEuI">
+          <thead data-page-node-id="gra0DRSZ5smORWPIK9TYF2"><tr data-page-node-id="XEUmo06YS2L3ldpkudPVCd"><th data-page-node-id="dULCUxvCeKXA41qaCoSfWL">代码</th><th data-page-node-id="trIiwWC3nV12vMkL5HIrcE">界面显示</th><th data-page-node-id="rakP9iB7VxEsq3qzrRnADJ">怎么处理</th></tr></thead>
+          <tbody data-page-node-id="t9cQpFk6M7De3ICejffCf8">
+            <tr data-page-node-id="MwhqTkBiQdZlKIoRA70T4S"><td data-page-node-id="6dgSwRk10FDTo7FtCcnxkT"><code data-page-node-id="U8wQJd7BIKKKuWSloPCYbG">INTAKE_FULL</code></td><td data-page-node-id="rPgKTHOORz5p0A4EQGybDP">{文件名}: 待接纳队列已满，未接收这个任务。 / Pending intake is full; this job was not accepted. [INTAKE_FULL]</td><td data-page-node-id="sqPug9a0s0zvqciG7550g2">等当前扫描和待接纳请求处理完，或用“取消所有”清空后再加。</td></tr>
+            <tr data-page-node-id="so9aX2eCEDbAbcUtKZ11bc"><td data-page-node-id="JUwrPSwqf3OtrwKKGbjREK"><code data-page-node-id="jMhjiBPsJhARvr45r4UZQL">SCAN_FAILED</code></td><td data-page-node-id="z8Yxm7Ec9BeNCz0RCyZuh2">目录扫描失败，失败前已提交约 {count} 个候选路径。 / Folder scan failed after submitting about {count} candidate path(s). [SCAN_FAILED] | {系统详情}</td><td data-page-node-id="m2FKkyo7pjAiANxrnStIoz">已加入的任务可以继续；按系统详情检查权限、路径或文件系统。</td></tr>
+            <tr data-page-node-id="HCe5UhjAoc5QOtESpA1NfA"><td data-page-node-id="uK9UPV8PD4tKYWq8kKgQuH"><code data-page-node-id="UF7nwQDObF5m5Z2KplV5GX">CONFIG_SYNC_FAILED</code></td><td data-page-node-id="eYiHlGGehSOo7gnNKifpVe">设置未能保存或应用，队列没有启动。 / Settings could not be saved or applied; the queue was not started. [CONFIG_SYNC_FAILED]</td><td data-page-node-id="Aa0dW7alGtFfBOMfsZInWW">先处理同时出现的“配置保存失败”或“配置应用失败”提示。</td></tr>
+            <tr data-page-node-id="J03cEhezWxniDmOa765c5W"><td data-page-node-id="ACwCsYumhAcuh0N1oC92bc"><code data-page-node-id="tTYta9gDC8EhewGUaQrPHl">ARCHIVE_BLOCKED</code></td><td data-page-node-id="bHsf36jFvHFm4Pa5QR1zJ6">{文件名}: 压缩包触发安全或资源限制，已跳过且未解压；具体原因见本行末尾和任务详情。 / The archive hit a safety or resource limit and was skipped without extraction; see the end of this line and task details for the reason. [ARCHIVE_BLOCKED] | {专属原因}</td><td data-page-node-id="dhi4khfXYLmtSMHq5aGLy2">源压缩包保留，程序继续下一个任务；按本行末尾的路径类型、条目数或容量原因处理。</td></tr>
+            <tr data-page-node-id="VSnS4X3mlDYpUU9RkXqueB"><td data-page-node-id="aJsLZLD2M6lTkVkiSAXB3p"><code data-page-node-id="e6LFbH2T7f68pmx69HPWKI">JOB_FAILED</code></td><td data-page-node-id="IB6O4yY49IJi9oKOWqTatA">{文件名}: 任务失败，请查看任务详情（错误分类：{category}）。 / Job failed; see task details (error category: {category}). [JOB_FAILED]</td><td data-page-node-id="TgBMZUDT4juYtiwBcLMLi9">在任务详情里看原始消息，按错误分类处理。</td></tr>
+            <tr data-page-node-id="LGXg9TBQeHHTUBmHIzC3Iu"><td data-page-node-id="ktI9plV00EvresjGJtEAKp"><code data-page-node-id="BDWqUgPNXPFmYTZhyGB21l">JOB_PARTIAL_RECOVERY</code></td><td data-page-node-id="GHfVHVgMrGVVgeDPlgVtVa">{文件名}: 任务没有完整成功，可恢复输出已保留；请查看任务详情。 / The job did not complete; recoverable output was retained. See task details. [JOB_PARTIAL_RECOVERY]</td><td data-page-node-id="wRN3BXXRJN85ftXDSt7Y0L">检查“非完全恢复”目录，不要当完整输出用。</td></tr>
+            <tr data-page-node-id="Sy9MHCk16xF42hdu1UYtnd"><td data-page-node-id="sdMxQXEbuOmDDrcFbWQ2VX"><code data-page-node-id="oKH1ih6o70MGgZYHM0qHok">JOB_INTERRUPTED</code></td><td data-page-node-id="jiCFctyxUDR7UzWGdkANED">{文件名}: 任务已中断，不会清理源文件。 / The job was interrupted; its source files will be kept. [JOB_INTERRUPTED]</td><td data-page-node-id="Nt2drZj3AKL5DeT3LoJmYX">确认源文件和暂存输出后，决定是否重新添加。</td></tr>
+            <tr data-page-node-id="ol4aoVNMh9As5DCo3ODMbN"><td data-page-node-id="TbgPPrdkFK0jWgDcgV1D4b"><code data-page-node-id="Ho52rYQNXSiBMlFTOo7gtt">JOB_PASSWORD_REQUIRED</code></td><td data-page-node-id="plqfbC1A7V9OKV8bUNZiUY">{文件名}: 现有密码均未通过，请在提示区输入密码或跳过。 / No available password worked; enter a password in the prompt or skip the job. [JOB_PASSWORD_REQUIRED]</td><td data-page-node-id="Xz99qzFMEA5er3r5BVmGqC">在提示区输入密码；不确定就跳过。</td></tr>
+            <tr data-page-node-id="37PTLVrTSG0ND78fRPLjrk"><td data-page-node-id="vvsBzXRwqKyeZx4xhoxAH1"><code data-page-node-id="6CM3DtBypX3YcZsK32uAdp">USER_NOTICE</code></td><td data-page-node-id="biGsv30UPx6oZ6ZrgquiBH">{文件名}: 任务产生一条需要查看的通知。 / The job produced a notice that needs review. [USER_NOTICE] | {通知原文}</td><td data-page-node-id="el6FHCyTZtfLJHu4wFtxc1">按通知原文处理。</td></tr>
+          </tbody>
+        </table>
+        <p class="small" data-page-node-id="po4zB89EvSdAu1FQ9UNssB">源文件清理的五条通知见<a href="#cleanup" data-page-node-id="PQh0BQ52mF19puQBE7AlyY">源文件清理</a>，同样用这份双语消息目录。</p>
+        <a class="toplink" href="#top" data-page-node-id="YzCIVXI5FzeZUnLYgeWkxe">返回顶部</a>
+      </section>
+
+      <section id="inputs" data-page-node-id="iLdWMh5VbeGbGKTDmKI5j7">
+        <h2 data-page-node-id="ciDjFaL0ZvQ71Z6lmeKQLP">把文件加进来</h2>
+        <p class="lead" data-page-node-id="uWTgax6vAq5s87iCTSVOs4">添加方式决定任务是否自动开始、是否经过自动分类。直接指定的文件（下称“显式输入”）和目录扫描的处理方式不完全一样。</p>
+        <table data-page-node-id="bg8NINNCEKmRlf9Hx8Q8W7">
+          <thead data-page-node-id="oi48lnxw2GMsBhiNc0ajBb"><tr data-page-node-id="XcGNb9bmfpaANhLvfbHmck"><th data-page-node-id="Y4KmqkCZjQz62UdLVSSOmX">入口</th><th data-page-node-id="jKWp4i3keCTP3hADIVFLD8">自动开始</th><th data-page-node-id="q3Nksf71WT1gDxyzhqbzRc">自动分类</th><th data-page-node-id="IqspUpnW93C88ifXDgv7G9">适合</th></tr></thead>
+          <tbody data-page-node-id="TioOeAW43Y9JfGFZqjZyUt">
+            <tr data-page-node-id="ph3x0JkskVEKkBY6nQlgYe"><td data-page-node-id="xF0kNHGeyDcxEIA2YwGpmr">添加文件 / 拖入文件</td><td data-page-node-id="ZSo9QZt1Snj37lnHHpffxk">否</td><td data-page-node-id="lK0YhtD1OJ30Ymdf8aaMBC">否</td><td data-page-node-id="crBNzu75jSPsTBTBQXt6lP">明确知道要解压什么，尤其含内嵌 ZIP 或扩展名异常的文件。</td></tr>
+            <tr data-page-node-id="0I06nNjckpD9k6IifgsqKF"><td data-page-node-id="cKCWCU8ETg1dRR8XFElhF8">扫描文件夹 / 拖入文件夹</td><td data-page-node-id="wE5n3fdivJ0mCwI4KNcPne">否</td><td data-page-node-id="cH1ZZfD9Qrd3PxwQXbki4R">是</td><td data-page-node-id="le7Zo1u3MyImyT944R1Coq">大批量清理目录，自动排除 Office、媒体等非压缩包。</td></tr>
+            <tr data-page-node-id="9zWAGMnfseWGZ0FdhGAipK"><td data-page-node-id="HqVDY47el204qvKYwxSgdK">CLI 路径</td><td data-page-node-id="6EANBQJrZGnrGtDTeXw8mO">默认是</td><td data-page-node-id="TAUzk99RawIIf5rR43uayE">文件否，目录是</td><td data-page-node-id="DIyRLw55ne7DQ6m2hxCxxo">脚本或资源管理器调用。</td></tr>
+            <tr data-page-node-id="aYt0YWP14giXXkE5NVGFQG"><td data-page-node-id="cNSLt0JGmGetR3NPsehQz0">CLI --queue</td><td data-page-node-id="0YduLkz9SgyqGnjHUY38T9">否</td><td data-page-node-id="jsDKFG3WEgKBxSncTYNpIy">文件否，目录是</td><td data-page-node-id="1xFcKEI3OHX3vx3xmqcURM">先收集队列，再人工点“开始”。</td></tr>
+            <tr data-page-node-id="EWzaor79JBAETCB6RZNfFG"><td data-page-node-id="coUARHRpOYs9K7VCbpDYSG">右键：智能解压到此文件夹</td><td data-page-node-id="LTggtJBZTG5BbKZY1Vo2s7">是</td><td data-page-node-id="MOGAH6kvktAHEL1n0VQOmG">文件否，目录是</td><td data-page-node-id="OirDEIXWTBawAOqpmLACBT">输出在源文件旁，保留源文件。</td></tr>
+            <tr data-page-node-id="KMOqLygkgElGCqDycUZhgS"><td data-page-node-id="PAJjY2p6B5DeReni30q1ea">右键：智能解压到此文件夹并删除</td><td data-page-node-id="BbYQlvAeQkhFLT0Od9pGXd">是</td><td data-page-node-id="4aC8DG0g6o4Dz3qR07sg1w">文件否，目录是</td><td data-page-node-id="czMmFVnfy3Ac2PxN68NKGH">输出在源文件旁，完整成功后永久删除源文件。</td></tr>
+          </tbody>
+        </table>
+        <div class="notice" data-page-node-id="fEMnAf1QJd2NiJCMDON8ta">
+          <strong data-page-node-id="R3OAE8btfkaP5bVJQVDHxn">重复与分卷：</strong>同一个压缩包不会重复入队。同一组分卷自动合并为一个任务，从首卷开始处理。
+        </div>
+        <a class="toplink" href="#top" data-page-node-id="S2xYN0vCMjVyn31YVNolpt">返回顶部</a>
+      </section>
+
+      <section id="options" data-page-node-id="6J7CK4hXvygz5oZIpDf9qa">
+        <h2 data-page-node-id="vyZEAvxEN99rK3FCYDgzZc">解压选项总览</h2>
+        <p class="lead" data-page-node-id="StAi8Dh3zguDnprysrFy5l">选项分几组，各自生效时机不同——有的立即生效，有的要等下次“开始”。先把这一节读完，能省掉很多“为什么没生效”的困惑。</p>
+
+        <section id="options-save" data-page-node-id="EU5sNdGVCAPYoBAEhESRPq">
+          <h3 data-page-node-id="S7mWchcFgEnjdYgHp6PcFI">设置保存与生效范围</h3>
+          <p data-page-node-id="Jxe1oyqlOVgvHrzBks36xI">程序不再提供单独的“保存配置”菜单项。正常关闭窗口时，程序会读取当前路径、菜单栏扫描模式与空间等待、下方解压选项、嵌套层数和清理策略，校验后以“先写临时文件、再替换原文件”的方式保存；点击“开始”时也会先执行同一套保存与应用流程，成功后才开始处理。</p>
+          <table data-page-node-id="QyMFfJHZutJ6ado4N3l5kY">
+            <thead data-page-node-id="vBz4gGXAgaPux3zAc9cN9u"><tr data-page-node-id="BAEQUlKkIUZd60aiRfrQY1"><th data-page-node-id="bcGHWQbkEdUpyCMB9LxvN1">操作或任务状态</th><th data-page-node-id="M37CQfNITLkuEqcTuOt5G7">实际行为</th></tr></thead>
+            <tbody data-page-node-id="jHdGxCb2x3AovfExhTUBMt">
+              <tr data-page-node-id="IcPJbaPutNLGc5qeo8kB4K"><td data-page-node-id="sYZKHbShPxhXmMkTW2RJyx">只修改窗口控件</td><td data-page-node-id="btweW3UfsXERtJhhaQYqKo">部分控件不会在每次点击后立即写盘，但通过当前窗口新添加文件或启动文件夹扫描时，“清理策略”和扫描模式等入队参数可能已经被记录。希望整批一致时，应先设置选项，再添加输入。</td></tr>
+              <tr data-page-node-id="x9Cpa1NHIHHqC8NkmXR8NB"><td data-page-node-id="IU37FD0ggzFqfvV4Bj2lb6">点击“开始”</td><td data-page-node-id="c0CrZGHMPoetinI0fevizL">先自动保存并应用，再启动队列。保存或应用失败时，控件恢复到上一次已提交的配置，队列不会启动。</td></tr>
+              <tr data-page-node-id="0j84yFhhExnAVE8HrDbDWY"><td data-page-node-id="zfDK3xiN98are0vkUYBibj">正常关闭窗口</td><td data-page-node-id="nxiDFg4vM4H7yJwnV41zIh">关闭流程开始前自动保存当前设置。保存失败时显示错误、恢复上一次已提交的配置并取消本次关闭，避免无提示丢失修改；再次关闭会保存恢复后的配置。</td></tr>
+              <tr data-page-node-id="Z46NoAcTQZwnovVvw5GVFu"><td data-page-node-id="3FbwXVQQbS26zdcUwm6fZm">正在处理的任务</td><td data-page-node-id="srwFLMPQVylVecdrUGEqym">任务启动时会取得执行配置快照，不会半程切换输出目录或暂存模式。清理策略是单独记录的，不受这条快照规则保护；修改并应用后，仍可能更新正在处理的任务。不要在处理中把“保留”改为删除类策略，除非确定要改变源包的处理方式。</td></tr>
+              <tr data-page-node-id="zjuRqg876KeQkwuyLljiUP"><td data-page-node-id="L7YB7rGl43a1xBabAvPWWu">未开始的任务</td><td data-page-node-id="5PWMFWEhtiQjmiyVW5fyeC">点击“开始”保存设置后，队列中尚未开始的任务会采用新的普通执行设置；中途修改的清理策略也会立即更新到所有未终态任务并刷新表格显示。已完成、失败或已中断的历史任务保留结束时的策略不变。</td></tr>
+              <tr data-page-node-id="9DY5sngRwtOpS2pJAEkNQy"><td data-page-node-id="pgEPlcu6PpiUVzFRPlMNx0">命令行、右键菜单或第二个进程转交的路径</td><td data-page-node-id="agwkXImRopO97ObmymEoT1">只读取已经提交的配置，不读取当前窗口里尚未通过“开始”提交的控件值。正常关闭时保存的设置会在下次启动后生效。清理策略和“解压到此文件夹”仍以该次外部请求的明确参数为准；未指定清理策略时使用“保留”。</td></tr>
+            </tbody>
+          </table>
+          <div class="notice info" data-page-node-id="RkL8eBl4yBevO3DexDJ8fO">
+            <strong data-page-node-id="vE019jftBrMbmvUM4WI3ez">主密码不会落盘：</strong>这里指输入或保存配置时，不会把“主密码”写入 <code data-page-node-id="XHc1u5MAbLZjCnK4pK0fO8">smart7z_config.json</code>；配置保存的是密码文件路径。另有一项独立行为：密码成功用于完整解压后，程序会尝试把它写入明文密码本并置顶，因此不能理解为“密码永远不写磁盘”。
+          </div>
+          <p class="small" data-page-node-id="mDsgacFtr4YKCXHvIKcZqU">配置文件位置：安装版在 <code data-page-node-id="HJfLuLjyZl74PZmGv0kwqK">%LOCALAPPDATA%/Smart7z</code>，便携版在 EXE 目录，源码版在源码根目录的 <code data-page-node-id="pAfP6TedmXnRJwvlXez6KT">resources</code>。需要手动维护字段时，查阅仓库中的 <code>docs/MAINTENANCE.md</code>“配置项”。</p>
+        </section>
+
+        <section id="options-destination" data-page-node-id="YMvuotUfYAQBoswuQ9D0x4">
+          <h3 data-page-node-id="HELUknThRbrHBbpfDcDQf8">输出位置</h3>
+          <p data-page-node-id="Hc5tJCEzH1HpWh3cA6FaE6">勾选“解压到原目录”：每个压缩包的输出放它旁边。取消勾选：所有输出进“目标目录”，此时目标目录必须填一个绝对路径，否则配置保存或运行会失败。</p>
+        </section>
+
+        <section id="options-staging" data-page-node-id="IdRFWp0zsDQH2xMglFqMoo">
+          <h3 data-page-node-id="BLIv47mT9R8BvN1xxUfxB4">暂存模式</h3>
+          <p data-page-node-id="9FrwG67XDAyVwowPtQgZNy">开启后，7-Zip 先解压到临时目录，程序检查路径安全、文件清单、数量、大小、返回码和输出上限；全部通过才把输出移到目标盘，再不覆盖现有文件地挪到最终位置。</p>
+          <div class="flow" data-page-node-id="ahflwuiHSS3Sfe34vhM4gl"><div class="flow-row" data-page-node-id="CrBKvIciKhmLxtzn0HKgRm">
+            <span class="node" data-page-node-id="Ufjt6hocmKFhn96QEpDM5f">解压到临时目录</span><span class="arrow" data-page-node-id="GyT5CeXxTy96qSFbkdLFNM">→</span>
+            <span class="node" data-page-node-id="AnlMh4gjNzZtwrqAcCaBTs">检查路径和输出上限</span><span class="arrow" data-page-node-id="TthpCiP4mvjInhyigRMbt9">→</span>
+            <span class="node" data-page-node-id="cpPQjdhMtEPEWNitzOsDQ0">核对文件、目录和大小</span><span class="arrow" data-page-node-id="Loly6iMUpbnsJSpgnZThqH">→</span>
+            <span class="node" data-page-node-id="IlGgr3HDjATaYys1uVyKeZ">写入目标盘暂存目录</span><span class="arrow" data-page-node-id="Rl3dUYWWQlApe3KYZKLXD9">→</span>
+            <span class="node" data-page-node-id="vDV0OWGFQCErZJiPRvRdmy">移到最终位置</span>
+          </div></div>
+          <p data-page-node-id="I02mDXFqFBAYzXFRLJUx4c">同盘移动直接挪文件，不额外读一遍；跨盘复制时边复制边核对清单里已有的 CRC32。CRC32 对不上，输出进“非完全恢复”目录，源压缩包不动。</p>
+          <p class="small" data-page-node-id="tc66sMgV17KsskHabrLqRO">关闭暂存模式后，程序仍不会直接写最终路径，而是在目标目录下建 <code data-page-node-id="N22CDx2bKJebuNMAmqHk1i">.smart7z_tmp_...</code> 临时目录，校验通过后再移动。两者唯一区别是初始解压位置：开启用“暂存目录”，关闭用目标盘。</p>
+          <p><strong>怎么选：</strong>想把初始解压放在指定临时盘上，就开启暂存模式；临时盘空间紧张、目标盘空间充足时，可关闭暂存模式，使用目标盘临时目录。暂存盘与目标盘不同会多一次跨盘复制，并需要两边都有足够空间。“直接模式”不是跳过校验，也不是把未完成文件直接写进正式目录。</p>
+        </section>
+
+        <section id="options-space" data-page-node-id="gOO9zebrDtgjFiSmImmgU5">
+          <h3 data-page-node-id="f0hOBdvuOl1V4M4SjYlUCF">空间不足时等待</h3>
+          <p data-page-node-id="QqoATAeEdSC8h428FFnhGQ">菜单栏“选项”里勾选后，程序根据压缩包清单、输出上限和安全余量检查可用空间（暂存模式同时查目标盘和暂存盘）。空间不足时任务进入 SPACE_WAIT，默认最多等待 <code data-page-node-id="XYMq4fi1kG9G9WeAPGMAKK">7200</code> 秒（2 小时）。取消对钩只是跳过等待，解压中仍可能因空间不足而失败。</p>
+          <p>适合你准备稍后释放空间、又不想重新添加任务的情况。等待不会自动腾出空间；当前任务等待时，后面的解压任务也要等。暂时无法腾出空间就取消当前任务，调整好目录或空间后再添加。</p>
+        </section>
+
+        <section id="options-deep" data-page-node-id="Ip3jyBz5Et6FpiRXcDBG8p">
+          <h3 data-page-node-id="rFu4Pz1kkhiZmYJkggOCgk">扫描模式</h3>
+          <p data-page-node-id="fQeXZDF4mRMGsWUtaDtJpv">菜单栏“文件扫描模式”三项选一：</p>
+          <table data-page-node-id="EjKfCeTmJs7GjXapzW1fzH">
+            <thead data-page-node-id="yLHMBnfpIbkV5DDzOZ3b24"><tr data-page-node-id="hDeeQCjn9Zx5WnH4olgKzb"><th data-page-node-id="k8046AKKeQVVQHerRfQdmS">模式</th><th data-page-node-id="oLtvkxm9QrtFeLO29F15Qi">做什么</th><th data-page-node-id="9sQF2y6oVAQmFzR7GEDz8T">什么时候用</th></tr></thead>
+            <tbody data-page-node-id="sjuG0xFdM4YC1uFBeNXFsh">
+              <tr data-page-node-id="WrEpbi4GIOUlgb1pjC2Gef"><td data-page-node-id="F9rRh6ooYHySkH0lnLmudv">仅兼容隐写者模式（非全读取）<br data-page-node-id="SHDuIdtZekg9W9J6q6o22w"><span class="small" data-page-node-id="8AYgjbdfB0bh8TwSGUjBjH">默认</span></td><td data-page-node-id="4aP7djrA70Jtet9Bp4l8OX">只在 MP4 的 ftyp/free 原子、文件尾和 MKV 的 EBML/SeekHead/Attachments 元数据处定位隐写 ZIP，不读视频主体。</td><td data-page-node-id="4OGYP8enO72hWIB4aR3Wr9">日常目录扫描。快，且能识别 SteganographierGUI 的三类布局。</td></tr>
+              <tr data-page-node-id="wXEm3ucVXPKXpYO8mLTBC2"><td data-page-node-id="gT3VE81qrErKRm3iOUqufm">深度扫描模式（全文件读取）</td><td data-page-node-id="IQilqIKRwTzeeUpoOlEGKS">先做上面的兼容探测，未命中再对文件做流式结构预检，查找任意位置的 ZIP/7z/RAR。</td><td data-page-node-id="3cMR9ZAYhUv84K957v2nYh">JPEG、未知容器、或怀疑文件里有任意位置的内嵌包。</td></tr>
+              <tr data-page-node-id="xqxnO5r19ax55A7shlwSIq"><td data-page-node-id="GlB1P7ejMTpr0VEnrMhwe3">普通模式</td><td data-page-node-id="Xx0cDkPwu0A8qKM550gR6X">关闭上述两类特殊扫描，只认常规压缩格式和轻量内容分类。</td><td data-page-node-id="bLzJEyVAzYvWoVF3ty1x1P">确定目录里没有伪装文件，要最快速度。</td></tr>
+            </tbody>
+          </table>
+          <p class="small" data-page-node-id="k6CcGq4sGuMEcMgwT4tmZj">这些模式主要决定目录扫描如何找文件，不改变后续解压的安全检查。直接添加、拖入或命令行指定的文件不走目录筛选；7-Zip 打开失败后，会先做隐写者探测，未命中再进入通用候选扫描。嵌套任务始终不做深度扫描。</p>
+          <p><strong>读取量的区别：</strong>默认兼容模式适合常规目录和已知隐写者布局；未知布局才考虑深度扫描。深度扫描可能读完整个大文件，扫描时间和磁盘占用会增加，宜先试少量文件。扫描没发现不等于文件里一定没有压缩包，发现候选也不等于能完整解压。</p>
+        </section>
+
+        <section id="options-nested" data-page-node-id="Yreq5nvuCmlJDAldQSBRwH">
+          <h3 data-page-node-id="gjjGANEPI1LdiJZXr0akvq">嵌套解压</h3>
+          <p data-page-node-id="MOhiUDYdwkipw6FahCse4z">默认关闭。开启后，父任务完成（或产生部分恢复输出）时，程序扫描其输出目录，把发现的内层压缩包作为新任务入队。子任务沿用父任务的清理策略和嵌套限制，执行同样的安全预检。</p>
+          <p>适合明确想把“压缩包里套压缩包”继续拆开的情况，可以少做几次手工添加，但会增加任务数、耗时和空间需求。只想保留外层解压后的原样目录，或不确定里面是否有程序资源包时，保持关闭。</p>
+          <p data-page-node-id="gNXiYrmpxOxIN3WIxsQVOE">为避免把游戏和程序的资源包误当成压缩包，扫描会识别结构有效但没有自解压载荷的普通 Windows EXE，保护其所在目录和父目录不再继续解压；保护不会越过本次输出根目录。改名成 .exe 的普通压缩包、以及尾部带完整 ZIP/7z 载荷的自解压文件不受此保护，照常处理。</p>
+          <p class="small" data-page-node-id="82FMBFNpj6ZLicHIwXkQdH">限制：<code data-page-node-id="9dlD5V9PahloHFBKBOLCzL">max_nested_depth=2</code>（最大深度）、<code data-page-node-id="5hp6muaSYImmKpI0kWXpQu">max_nested_children=50</code>（每根批次最多子任务数）、<code data-page-node-id="UpXPsLyCHutpWU3XAXGd4y">max_nested_output_bytes=0</code>（0 为不单独限制总字节，普通输出上限和磁盘检查仍有效）。循环检测用真实路径、设备号、文件标识、大小和修改时间。</p>
+        </section>
+
+        <section id="options-cleanup-fallback" data-page-node-id="EdcMUrvICvbMfCzuvLoG9p">
+          <h3 data-page-node-id="QJ09lNLhDDOInowtCH5lCc">永久删除回退</h3>
+          <p data-page-node-id="iVZfiG4RPbcdnLUdhLG1lF">“选项”对话框“清理”组中的“回收站不可用时允许永久删除源文件”默认关闭。关闭时，选择“回收站”清理策略后，如果某卷明确不支持回收或文件超过该卷回收站容量上限，源文件保留在原处，任务照常完成并显示 <code data-page-node-id="3g80lqDjBmHybuORaIAbwI">RECYCLE_FALLBACK_DISABLED</code> 通知。勾选后，这两类文件在有恢复日志保护的前提下被永久删除，无法从回收站恢复。该开关只影响“回收站”策略；“永久删除”策略不受此开关保护，清理检查通过后仍会永久删除。</p>
+          <p>只有源文件已有备份或能够重新获取，并且你明确接受“回收失败条件下不保留”时才考虑开启。设置未知、权限错误或文件被占用，不会因此变成永久删除许可。恢复日志用来处理删除过程中的中断，不是已删除文件的备份。</p>
+        </section>
+
+        <section id="options-safety" data-page-node-id="DRwoPwJxVC0EuHaM3UKDuQ">
+          <h3 data-page-node-id="2UERtujqxvHhAUeo1gaTBr">安全预检与自动跳过</h3>
+          <p data-page-node-id="wpWy0SnU1hlgirouZiXeKh">每个压缩包在解压前都过同一套清单、路径和资源限制检查，没有手动放行入口。命中限制的任务显示为“失败”，运行日志写 <code data-page-node-id="9JbeDE8HbaAz1UKKyWoBs7">ARCHIVE_BLOCKED</code> 和专属原因，源压缩包保留，队列继续下一个任务。</p>
+          <p data-page-node-id="vg9n62GCfr87mrZ5LDc8pK">正常压缩包不会因名称中含空格、中文、点文件、等号、普通多级相对目录而被拦截；加密标记、普通 Unix 文件权限、常规分卷也不属于路径风险。程序只拒绝在 Windows 上无法安全落盘、会发生名称冲突，或无法完整验证的结构。</p>
+          <table data-page-node-id="gfXtV2JVFG8gGhxiGjSkM3">
+            <thead data-page-node-id="khtryKh4wC2Wd3ldSyNLKV"><tr data-page-node-id="JUjeA4H761laeEKMclfUNg"><th data-page-node-id="SEBlcR6B34uSGPbGWTOVO5">清单或压缩包案例</th><th data-page-node-id="Gc1PO1HqOC2dUeVV50Qp8v">专属原因</th><th data-page-node-id="anNQHjnAs4ckSJ5yDMz7OZ">处理结果</th></tr></thead>
+            <tbody data-page-node-id="AZ80sJ1hPxY9HmBsvgHjzS">
+              <tr data-page-node-id="eXH3hrPtCqpReBYgoh7AGO"><td data-page-node-id="liau6WlW1WxfhAk01p4t9u"><code data-page-node-id="E4nJ3wxlQdJ8v7dwdbK9b5">photos/旅行 01.jpg</code>、<code data-page-node-id="rFjy7Vk73Xz30XtsCsOFTR">.gitignore</code>、<code data-page-node-id="G5f4JrRgCycFTtXb4Y6Uoj">folder/report=final.txt</code> 等普通相对路径</td><td data-page-node-id="Dy2p6EhEnBWH8qd0oJ82xh">不拦截</td><td data-page-node-id="K2GXidK9GstzjJjtgWsRrC">继续检查大小和空间，随后正常解压与校验。</td></tr>
+              <tr data-page-node-id="seQiQT8lodDweDwq931d2n"><td data-page-node-id="EpFR9cmDUQQPKrRQJnJvu5"><code data-page-node-id="sLlRbVqqYWdKf8E8k1DG8E">../outside.exe</code> 或其他越过输出根目录的成员</td><td data-page-node-id="r07k4NUE5CDOqt3ASOVvDf">路径穿越</td><td data-page-node-id="E1y5wXQqBDmdk5UIRiEsPw">解压前拦截并跳过该任务。</td></tr>
+              <tr data-page-node-id="94ZJWetuIydXOJb3ggskNE"><td data-page-node-id="Egkr4fvvhhzXTy9h9PIcNm"><code data-page-node-id="gmcA5V64W4G5XsAx5HkBBY">C:/Windows/outside.exe</code>、UNC 路径等</td><td data-page-node-id="29tJJaYISVWWXAtI3shARA">绝对路径</td><td data-page-node-id="55h15DD3Xw1orZyZFLnH1Q">解压前拦截，避免把文件写到目标目录之外。</td></tr>
+              <tr data-page-node-id="aGdyN6eAVmIHni7GHfRAni"><td data-page-node-id="ytH6Lb036KUZaZqbfRW3jC"><code data-page-node-id="4Zn0z4haxzOnHfot2ACCJq">CON.txt</code>、<code data-page-node-id="DbpK4slAQWQ3aiQVNqUHgx">NUL</code>、<code data-page-node-id="zfbhkASgB8TqCjMNCmIdLk">COM1.log</code> 等</td><td data-page-node-id="3FpPoHglrFBhmHUseJW0hh">Windows 保留设备名</td><td data-page-node-id="h9DKFao5qhKuvcvPmwVcXE">解压前拦截，避免设备名解析和文件系统异常。</td></tr>
+              <tr data-page-node-id="esASItOQGJ1GoMKNyLluSc"><td data-page-node-id="xr42kuPW8UvbMTDn8pXBGe"><code data-page-node-id="KW9NTRDsZwQgLtY7nQVige">report.txt:payload.exe</code> 或 7-Zip 标记为 Alternate Stream 的成员</td><td data-page-node-id="xKHXselhScQHXAbDJDJe9C">NTFS 备用数据流</td><td data-page-node-id="L8OnxboJCRrgkdBzFvlk7L">解压前拦截，避免隐藏数据流写入。</td></tr>
+              <tr data-page-node-id="D4yWdRHEMDUw1MLdlROrQq"><td data-page-node-id="SfiPWQMIbPopuzvTDIOREp">符号链接、硬链接或输出树中的 Windows 重解析点</td><td data-page-node-id="lAgmkqMzzmZRhbIyzaRas3">符号链接或硬链接 / 重解析点</td><td data-page-node-id="gbvOqmNY4EthrJvgVFZiFE">解压前或输出复查时拦截，不跟随链接。</td></tr>
+              <tr data-page-node-id="g9jYBTm2xBCqO1lDxDItaL"><td data-page-node-id="QO69mu6tSECSKaYfuz6Rpe">7z 差分归档中的 Anti 条目</td><td data-page-node-id="AR1bo52oeMUDGXki7A2POP">反向删除条目</td><td data-page-node-id="qKtJ7Y9grtsSRDhW6MOPcE">解压前拦截，不执行带删除语义的成员。</td></tr>
+              <tr data-page-node-id="0N7CxD1V8fRdRQFMSEHzVK"><td data-page-node-id="sjGMxwG5aNYSfSBFnLrl0A"><code data-page-node-id="SzWXVwTg6yz9qE68FICHCg">A.txt</code> 与 <code data-page-node-id="PCjQFmhCumJNK30ngPwkYt">a.TXT</code>、落盘位置相同的两个成员</td><td data-page-node-id="OKxQvAewnpczyCiz1u07rl">Windows 路径冲突</td><td data-page-node-id="L0oIOtIEdVlrX9wp7NyONZ">整包跳过，避免覆盖顺序决定最终内容。</td></tr>
+              <tr data-page-node-id="KvOBoDJsYEE0Edpqr4h1hK"><td data-page-node-id="kNmu5fWd9MlLst6BFyHixT">尾随点或空格、控制字符、空路径、单段名称超长</td><td data-page-node-id="efD7e6qLretBbvK5k2023F">Windows 不兼容路径</td><td data-page-node-id="DsbRn2y2FVhnZqB1T6c9Jg">解压前拦截，避免名称被系统改写或无法创建。</td></tr>
+              <tr data-page-node-id="89a4m2MRBf7WA00WgmAZw2"><td data-page-node-id="zpglnEdKWuEDT3m6auoAzy">清单被截断、只读取到摘要，无法逐项检查</td><td data-page-node-id="IkvRWp9yO1Uk2g3SEw3RQD">清单不完整</td><td data-page-node-id="0kuCrvhQ4TBYEqzW5OiUwy">整包跳过；完整路径证明缺失时不尝试解压。</td></tr>
+              <tr data-page-node-id="TlQKQP9PPXJFeCEyf87xSW"><td data-page-node-id="Hz4952j9sR8HadFBkdT6ud">条目数超过 <code data-page-node-id="jdbCQvRTvJPBEiHHv2hcJV">max_manifest_entries</code> 或 <code data-page-node-id="oafJ0WRz6C1kL50Nj50Go5">max_output_files</code></td><td data-page-node-id="5cupy0Ul96SwJO83PNUygb">清单条目或输出项目超限</td><td data-page-node-id="uVb2e9EATXLG6TePtuBv2G">整包跳过。两个默认值均为 200000；合法超大归档建议拆分，确需调整时应先评估磁盘和文件数量风险。</td></tr>
+              <tr data-page-node-id="tkNoKPPAVDgzKgGINPj30I"><td data-page-node-id="vCbCEGwBeWP91JJEqBBhHA">声明输出超过 <code data-page-node-id="3Rjf3xaB0N2QFckxEwS1Vj">max_output_bytes</code>、嵌套预算，或没有可安全批准的容量</td><td data-page-node-id="uDMzWuhQ1vBZke8LPoBxdz">输出容量超限</td><td data-page-node-id="bcgLf20L6mcJAq1MmPBqbf">整包跳过，不创建正式输出。</td></tr>
+            </tbody>
+          </table>
+          <div class="notice" data-page-node-id="2gwH53CoEMqVaiq1QU8BTv">
+            <strong data-page-node-id="dVlapWOHm01fnU0TWweAAH">误拦截复核结论：</strong>普通 Windows 兼容压缩包的相对路径、Unicode 名称、空格、点文件、加密文件、普通权限和常规分卷均可通过。Unix 压缩包中的链接或仅在大小写敏感文件系统上可并存的同名文件虽然可能是合法源数据，但在 Windows 目标上存在链接跳转或名称碰撞，因此仍会明确拦截，而不是静默改名或覆盖。
+          </div>
+        </section>
+        <a class="toplink" href="#top" data-page-node-id="2ydHM8F4kCQEWPkhiygfJK">返回顶部</a>
+      </section>
+
+      <section id="workflow-normal" data-page-node-id="eS5tysex2ihhhC6E661fC2">
+        <h2 data-page-node-id="acpqsLlqsWzwFwnhR4LUJ5">普通解压</h2>
+        <ol class="step-list" data-page-node-id="XIQe9s4Qzf43BpdO23IhBN">
+          <li data-page-node-id="Rx1CyDlDoTUfbtYV0Zv8Xf">“添加文件”或拖拽加入 .7z / .zip / .rar / .tar 等文件。</li>
+          <li data-page-node-id="KtTJDcMafkAbWZ8d5CnBDg">确认清理策略。不确定就选“保留”。</li>
+          <li data-page-node-id="omL8pZRk5azoJkvnzMFKTj">点“开始”。程序保存设置，逐个处理队列。</li>
+          <li data-page-node-id="oB5n58aYIn5YZKj0AVGfto">每个任务：识别结构和分卷 → 读清单 → 查空间和路径安全 → 解压 → 核对文件、目录和大小。</li>
+          <li data-page-node-id="Ho7NYyffrpo4bkTCd4yQle">状态变 COMPLETE：输出已写入最终位置并通过复查。变 PARTIAL_RECOVERY：只保留可恢复输出，源压缩包不动。</li>
+        </ol>
+
+        <h3 data-page-node-id="takEq2BWrHXCbHz04HaAqh">输出命名规则</h3>
+        <table data-page-node-id="HkGq4AnHGCydX8EZNzJs9E">
+          <thead data-page-node-id="nZyjlHRN4EFwkuXtL8cjTF"><tr data-page-node-id="vVVcMDjUBFLEZKXdmuxUVP"><th data-page-node-id="OnXjta3n8RoIA8O7MTAvT0">解压结果</th><th data-page-node-id="K8akOb4mbfAullHAN7pJuq">目标路径规则</th><th data-page-node-id="VL6XRFq31kgI1NvjL2RyP8">例子</th></tr></thead>
+          <tbody data-page-node-id="jpkhq4goRiUOU30j6kE18b">
+            <tr data-page-node-id="Di7ABb6skHmF4elDiPrd7H"><td data-page-node-id="THiUj53tf71QONFCqwAVHC">包内只有一个顶层文件，且目标不存在</td><td data-page-node-id="jFycb57ozpYNgy2Z4h9Bjj">直接输出该文件。</td><td data-page-node-id="6ep51JmgpVk5ZYV4rxY2ea">report.zip 内只有 report.pdf → <code data-page-node-id="ONtq2HQJ5EQqJ6WMAhRuoc">report.pdf</code></td></tr>
+            <tr data-page-node-id="dh3uhEi4NxAdwJ3UFbHuw2"><td data-page-node-id="dmbmZGBJCSV568z11xMOjB">包内只有一个顶层目录，且目标不存在</td><td data-page-node-id="pbdlirCDleiqrvvebQmGhQ">直接输出该目录。</td><td data-page-node-id="aOxZj0FIpMr8UzJopA2Qyb">site.zip 内只有 site/ → <code data-page-node-id="kKJh7Df4YYpFUcqrnfmpH4">site/</code></td></tr>
+            <tr data-page-node-id="isd3Rm0SqpoBb3F4GzziPA"><td data-page-node-id="ZNyEnnEehj9Gk1dRfYJOPO">多个顶层项目，或目标已存在</td><td data-page-node-id="is4D060bp4e5V2H9LE9qj1">放入以压缩包名称命名的唯一目录。</td><td data-page-node-id="fcK7FDhXsS6MvqyCibCbNs">data.zip → <code data-page-node-id="ArBx7MovDHEE5a9w0XnTKz">data/</code>，冲突时自动生成不覆盖的唯一目录。</td></tr>
+            <tr data-page-node-id="ob3GNUzmzrUVHAFi8DW0Hp"><td data-page-node-id="BO8eBPHAtGg2OsZwFstVrg">部分恢复</td><td data-page-node-id="BmqNkJguqZdv6R8agdKppy">放入“非完全恢复/压缩包名称”下。</td><td data-page-node-id="apmr0MW2H3tLLfOhJPUSEa">CRC 错误但仍有文件可恢复 → <code data-page-node-id="OgAfhtWnGPRPGIF6tPuew3">非完全恢复/data/</code></td></tr>
+          </tbody>
+        </table>
+        <a class="toplink" href="#top" data-page-node-id="yBLC0sCSSDMAY5IdzLK61Q">返回顶部</a>
+      </section>
+
+      <section id="workflow-password" data-page-node-id="sZ1Q84eWyd0VditNkP5ESj">
+        <h2 data-page-node-id="UUlKJkoc9OosOLwsjnM7Oi">密码压缩包</h2>
+        <p class="lead" data-page-node-id="PlL5hS5VutvFjlbuFpZ8Ff">密码只在处理过程中临时使用，不会写入长期任务记录；日志里也不记密码值。但密码文件本身是明文——请勿把密码文件发到公共渠道，也别指望它替代密码管理器。</p>
+
+        <h3 data-page-node-id="EXFuryEC0de5rqKHRLA8ND">程序按什么顺序试密码</h3>
+        <div class="flow" data-page-node-id="zMwR30uwdzLvp43j3oU6Pl"><div class="flow-row" data-page-node-id="jvlaQPwBzYetwEsFSWAl6T">
+          <span class="node" data-page-node-id="ZQ2OYdngjjiybrDwFu6VSk">本次手动输入</span><span class="arrow" data-page-node-id="HcwmwKvyoIWMQ8igp2KeO5">→</span>
+          <span class="node" data-page-node-id="a1MR2EdFHyEeJRJWbXbAiV">会话主密码 / 最近成功密码</span><span class="arrow" data-page-node-id="O10XVmlYB6PZf0wBThJSQb">→</span>
+          <span class="node" data-page-node-id="PGeNcD7hDc96cnGcrV9ANS">无密码探测</span><span class="arrow" data-page-node-id="c9QujHHEzQYUUiEYd9DAwV">→</span>
+          <span class="node" data-page-node-id="C8XcX0ajWhGpCpuS2vj1tN">密码文件逐行候选</span><span class="arrow" data-page-node-id="CdmytZk8LY6xcbGy4bgKDZ">→</span>
+          <span class="node" data-page-node-id="GyXeniLDBpkbqEmCLsN3rY">弹出密码输入</span>
+        </div></div>
+
+        <h3 data-page-node-id="Z3f51jcJgzFad54HrRgZ95">用法</h3>
+        <ul data-page-node-id="HoEXQyQyRAKA0GqIpGNAtE">
+          <li data-page-node-id="vZdIfckrDL57AiyfJUa97b">密码文件纯文本、一行一个，默认文件名 <code data-page-node-id="WiGZBPKvQKCdVkFLzG25DQ">code.txt</code>。相对路径通常按配置所在的可写状态目录解析：安装版为本地用户目录，便携版为 EXE 目录，源码版为 resources；升级时可能继续使用旧程序目录中的非空密码本。自定义绝对路径按指定位置使用。</li>
+          <li data-page-node-id="O75HAOZh3RKkvFkKIPGRU7">一批加密包共用一个密码时，先填“主密码”再开始。</li>
+          <li data-page-node-id="aQXoGT5wu0DfdcY1wPrEwB">一个密码用于完整成功的任务后，会成为本批次后续加密包的优先候选；程序同时尝试把它写到密码文件顶部。即使它最初来自“主密码”或手动输入，也可能写入这个明文文件。</li>
+          <li>同一批次内立即生效，无需重启或重新添加任务。后续任务重新读取密码文件；外部编辑会在下一次自动尝试时生效。当前已开始的一轮尝试不会中途更换候选。</li>
+          <li>例如同批有十个包，首个包成功后，后面的包可以优先试同一密码，减少重复输入和无效尝试。手动调整密码本顺序只改变密码本这一组候选，会话主密码仍排在前面；密码本写入失败时，本次会话仍可优先使用成功密码，但不能认为磁盘上的顺序已保存。</li>
+          <li data-page-node-id="WJ7Bpipo5NBAjpwC4XRxNH">文件头可见的加密包会复用无密码状态下已取得的完整清单；等待手动密码期间源文件没变的话，重新入队也不会再读一遍清单。</li>
+          <li data-page-node-id="iNArKrhChhCB9SUJmeGyyM">自动候选全部失败进入密码提示后，每次手动提交只试本次输入；输入错误会立即再提示。</li>
+          <li data-page-node-id="aNHSXjzORojwe8jPxKZpWl">已确认加密的包在解压阶段不会再做必然失败的无密码尝试；列清单时某密码已解锁文件头的，解压直接先用它。</li>
+          <li data-page-node-id="E2HIgkUFgBFBTin19QZCgK">手动提交或跳过后，输入框立即清空、提示区收起。点“跳过”任务标记为 SKIPPED，源文件不清理。</li>
+        </ul>
+        <p class="small" data-page-node-id="3BScLBAmO0TjNxTYz66M72">密码文件限制：超过 4 MiB 整份忽略；最多用前 10,000 个候选；单行超 4,096 字符的候选忽略。</p>
+        <a class="toplink" href="#top" data-page-node-id="pOi2ORw08tXBzy4OCDEhqT">返回顶部</a>
+      </section>
+
+      <section id="workflow-multipart" data-page-node-id="RcHJecFsIBBHNVbT2YGxfq">
+        <h2 data-page-node-id="bME0cLOgAHbd6sEZN8yUE4">分卷压缩包</h2>
+        <p data-page-node-id="y5ucLGDHGIyRydyWGCX2zA">同一组分卷自动合并为一个任务，从首卷开始处理，不会重复解压。分卷齐全、解压完成且检查通过后，源文件清理按整组执行。</p>
+        <table class="compact" data-page-node-id="mxV1EhFspwgWhbLiqsBmjk">
+          <thead data-page-node-id="3pHglnmiUuvLmV2ZeHBhYc"><tr data-page-node-id="2C5CLiziOkTzNmkIhK1I72"><th data-page-node-id="nETMcoCB0hF41TxkbjU3SP">分卷样式</th><th data-page-node-id="Cc78YlUQICEpFIEONrXzEm">识别</th><th data-page-node-id="JX9cHTakQ1KKSL3SKTh9A2">例子</th></tr></thead>
+          <tbody data-page-node-id="hnmYf5nAGbAVozytaG3zOx">
+            <tr data-page-node-id="1nadoC5ei5lwTdcU6RrsBn"><td data-page-node-id="0iQ9FvdFWKchvpWCpOCpaM">数字卷</td><td data-page-node-id="HT7Df7LdjJ7ApsthK108EQ">.001、.002 等连续编号</td><td data-page-node-id="EosP1EWhUBdWB5oY6JAinP">movie.7z.001 ～ movie.7z.006</td></tr>
+            <tr data-page-node-id="o6TSkDD2yBg2omAnkTex9q"><td data-page-node-id="teWb1nW8jDM87qrmBLnt8H">RAR part</td><td data-page-node-id="mrOB0d11SI4QHJ7gWqy3oR">.part1.rar、.part2.rar 等</td><td data-page-node-id="nCwvnIuHpUAMAHxiIy9ga2">archive.part01.rar</td></tr>
+            <tr data-page-node-id="sbLjUnmiJqWDcOHhkGjBzS"><td data-page-node-id="3QAXHNYO1aQQVJ7S8TiZMw">经典 RAR</td><td data-page-node-id="ZeyOQjBkEYw7Dt8earEOBv">.rar、.r00、.r01 等</td><td data-page-node-id="hBgLX5JmCvvHYQsmMk36HE">backup.rar + backup.r00</td></tr>
+            <tr data-page-node-id="vnPXcDHTuvSzOHDjyYiE3i"><td data-page-node-id="cja7UkLQQCIoLklyfinwgP">分卷 ZIP</td><td data-page-node-id="3wCG320WxQZT6wTQNAwY3P">.zip 与 .z01、.z02 等</td><td data-page-node-id="rgpfh042G6jCM9PKkT9ZGA">set.zip + set.z01</td></tr>
+            <tr data-page-node-id="dFw2Onke37Pz4pE5HU1y98"><td data-page-node-id="zUMTWjXCNoClkQ2mvh2CUr">ARJ / SWM</td><td data-page-node-id="EyHFnl9TOrjQMIH5iRHFn0">.arj/.a01 与 .swm/.swm2 等</td><td data-page-node-id="vxGKzAE4eGiid4Air61jl4">image.swm + image2.swm</td></tr>
+          </tbody>
+        </table>
+
+        <h3 data-page-node-id="7ADDcu3B6w4WikVTEICElr">例子：完整六卷 7z</h3>
+        <ol class="step-list" data-page-node-id="KsLqwDXSRqyO1NJ5I3nJIU">
+          <li data-page-node-id="fGQKJ3pi7Dbis3RTwWL2xm">把 volume.7z.001 ～ volume.7z.006 放同一目录。</li>
+          <li data-page-node-id="Yh78jClm9iOu5iz7UDC2FG">添加任意一卷。程序自动找到同组文件，从首卷开始处理。</li>
+          <li data-page-node-id="dplA1KTPwyww66EfSa3UVt">清单、解压、校验全通过后任务显示 COMPLETE。</li>
+          <li data-page-node-id="KYcAwHLPckF1h6MHnCpfe4">清理策略不是“保留”时，清理前还会检查卷集完整性、7-Zip 卷元数据和源文件身份。</li>
+        </ol>
+        <div class="notice warn" data-page-node-id="5L1VJ857sWfjuXKDw0BH9J">
+          <strong data-page-node-id="0PqCRGdC3dnWBGapD7yqxJ">缺少分卷：</strong>程序确认中间卷缺失时报告 MISSING_VOLUME，不再把该文件当内嵌 ZIP 候选。补齐分卷后重新运行。
+        </div>
+        <a class="toplink" href="#top" data-page-node-id="MKO0qQIUDbDrkw2iYxReDm">返回顶部</a>
+      </section>
+
+      <section id="workflow-folder" data-page-node-id="9Y5NCYGEtRDzr1M0dLJCcw">
+        <h2 data-page-node-id="jQ7dgRRrlRb34ifRhoc7Qc">扫描文件夹</h2>
+        <p class="lead" data-page-node-id="bqECbPeIWxwkGxbYOo2Y9Z">选一个目录，程序自己遍历、自己挑文件。适合一次处理下载目录这类大批量场景。</p>
+
+        <h3 data-page-node-id="2SPm4io0bv8O4vLUdfRwFC">程序怎么挑文件</h3>
+        <ul data-page-node-id="TUpl1ODB4anXmsMjNP83dI">
+          <li data-page-node-id="4CLKo3tciAO1VmtDMVGvaK">先轻量读文件头和文件尾。7z、RAR、CAB、WIM、TAR、ISO、DMG、VHD 等有明确结构证据就不再扩大读取；ZIP 会继续核对中央目录。</li>
+          <li data-page-node-id="b2AFFcYBeT88AnLGFi3B99">默认的“仅兼容隐写者模式”只识别 SteganographierGUI 的 MP4 追加 ZIP、ZArchiver free 原子 ZIP 和 MKV 附件 ZIP，跳读容器元数据定位，不读视频主体。</li>
+          <li data-page-node-id="z55CzaTyDA8noRqJ6hZzdq">Office 文档、APK、JAR、MSI、PDF、媒体和可执行文件即使内部有压缩结构，也按实际类型处理，不会被误解压。</li>
+          <li data-page-node-id="RcIKdymoF3doPVvKRHUQWG">复合扩展名如 <code data-page-node-id="mbCc8F03iXv55c64A8O9Cp">.tar.gz</code>、<code data-page-node-id="oGiaisXILLAFPxvVjFQPlm">.tar.xz</code> 算压缩包候选。</li>
+          <li data-page-node-id="KCtlWkQfaG99ebthYWsKP8">直接添加或拖入的文件不走目录筛选，但 7-Zip 打开失败后同样先做隐写者探测，未命中才进通用候选扫描。</li>
+        </ul>
+
+        <h3 data-page-node-id="vO3sGlHRahKM8g7OlQLW0v">什么场景用什么入口</h3>
+        <table data-page-node-id="reRK9g324FyrZ8GgBTZgjv">
+          <thead data-page-node-id="jhQF9bSURywfDDfIhgVZ2B"><tr data-page-node-id="5v7QHAlVcUgLAbyr9pyo5z"><th data-page-node-id="9jRJ9ZqIuSL7vx5VT2SgdZ">目标</th><th data-page-node-id="RJcEy4w31dlCAfTKc5kgU5">建议入口</th><th data-page-node-id="zPrCKcRGcyfp3vAyWFj2dI">原因</th></tr></thead>
+          <tbody data-page-node-id="4J9y6KPguLF9MQIL5GT2vJ">
+            <tr data-page-node-id="3Ub1nuD10pwzTOrc5MaHlF"><td data-page-node-id="PD0kbZ1vg0rz7A37IWdA9b">整理下载目录里的普通压缩包</td><td data-page-node-id="E4vxrFMly7e35oufDcbdLr">扫描文件夹</td><td data-page-node-id="cLXUIyeWiX7DPOFVeHCSJE">效率高，自动跳过文档和媒体。</td></tr>
+            <tr data-page-node-id="6AFp0xwZJ5A66aIwOi9YFe"><td data-page-node-id="GNi3YnrAtK2yg2TnQLi3tI">扩展名错误的普通压缩包</td><td data-page-node-id="d1emUBItHi2IeVBfzyZ7fe">“添加文件”或命令行文件路径</td><td data-page-node-id="e8S2eD2JB9FEDS6WcD8jxt">绕过自动筛选，人工确认过的文件直接进。</td></tr>
+            <tr data-page-node-id="eCHHVlRDEx6MIrgqZiDDi0"><td data-page-node-id="owW8GbICwX1qJbSfdBOg40">SteganographierGUI 的 MP4/MKV</td><td data-page-node-id="mMbzM43I9SqgXmAlJLBtnB">默认兼容模式 + 扫描文件夹</td><td data-page-node-id="tShjAi9ijKDILhLdp3ctat">跳读定位，不读媒体主体。</td></tr>
+            <tr data-page-node-id="eDNYrUeRhUE0dz3XeTDwAo"><td data-page-node-id="oG1jIQVGZlJ8dKqenx4sl3">JPEG 或未知布局的内嵌 ZIP</td><td data-page-node-id="nwfczzl6dQ3E1fxoVWlkGE">深度扫描，或直接添加文件</td><td data-page-node-id="ei2TqDK56pGnpbULSncVvV">深度扫描顺序读文件；单个确认过的文件直接加。</td></tr>
+            <tr data-page-node-id="mlTD3Kk7Z8hiQXbCaCw6Hm"><td data-page-node-id="gcTnmh6R0rq9rzEebLX4YE">资源管理器右键处理</td><td data-page-node-id="BWBwNR1b0bDCywTvMCHZ8S">两个右键菜单项</td><td data-page-node-id="rYo00YAiMfhfez3ExM9sGR">按所选菜单保留或永久删除源文件。</td></tr>
+          </tbody>
+        </table>
+        <p class="small" data-page-node-id="ZD2hRxLOCaFeTaOrUjhUG7">自动开始的目录任务（CLI、右键）：先完成扫描、整批入队，再按源包大小从小到大开始解压，避免第一个大文件抢住处理线程。</p>
+        <a class="toplink" href="#top" data-page-node-id="gNIF4eRzdYzyn2Ej7O1bvs">返回顶部</a>
+      </section>
+
+      <section id="workflow-stego" data-page-node-id="o26vX36loH5Ni6zFXlGKV4">
+        <h2 data-page-node-id="LWGBKE5Dr4ap89qxMwpDqv">伪装文件与内嵌 ZIP</h2>
+        <p class="lead" data-page-node-id="gsMwyhv7ObEYWVCOfRx7yZ">有些视频文件里藏着 ZIP。Smart7z 可通过容器结构定位支持布局的 MP4/MKV 隐写 ZIP，并检查 ZIP64 记录、诱饵签名、随机区和空 mdat 尾缀。遇到未知或无法确认的布局仍可能需要深度扫描或人工复核，不保证每个伪装文件都能恢复。</p>
+
+        <h3 data-page-node-id="N68it1nMqweLZPbPXrHySN">能识别的三类布局</h3>
+        <div class="three-col" data-page-node-id="saDaAwZ2IG1ICZa3e5urg6">
+          <div class="mini-card" data-page-node-id="mdzXJ7KVIj8XLHL1EFdm55"><h4 data-page-node-id="v478GlCkvuMVFHzpAGKHCR">普通 MP4 追加 ZIP</h4><p class="small" data-page-node-id="q6tBYlN2iFWlasZFHcDHnD">ZIP 直接结束于文件尾，或带受支持的隐写者诱饵签名、随机区和空 mdat 尾缀。</p></div>
+          <div class="mini-card" data-page-node-id="NiHw8FCf1KxB7EAjdHn9bE"><h4 data-page-node-id="BlMNISZXKzgg8jq4BsWCJy">ZArchiver free 原子</h4><p class="small" data-page-node-id="MCsGTkfaM0aL1Oabs6QOh2">验证 ftyp 后的 free 原子，要求完整 ZIP 与原子载荷边界精确一致。</p></div>
+          <div class="mini-card" data-page-node-id="xk2IAjTRKU4lMyDDHdiOVt"><h4 data-page-node-id="K6eS4In27EvtuHQZ2ehXAO">MKV ZIP 附件</h4><p class="small" data-page-node-id="Kd5UMa84czBwsqGzf7fe7J">通过 EBML 和 SeekHead 定位 Attachments/FileData，跳过大型 Cluster，校验附件内完整 ZIP。</p></div>
+        </div>
+
+        <h3 data-page-node-id="Y0SCLs3qv0iHEBuOU074JU">操作步骤</h3>
+        <ol class="step-list" data-page-node-id="R4k4AvdT87ofplSXfXDqEI">
+          <li data-page-node-id="8LNIc4OxPm6gIiRGlU7lpZ">保持菜单栏“仅兼容隐写者模式（非全读取）”开启，扫描文件夹。</li>
+          <li data-page-node-id="j9JzELIeJ7kclAa5Yqq4JO">未知布局没被发现时，改用“深度扫描模式（全文件读取）”，或“添加文件”直接选单个文件。</li>
+          <li data-page-node-id="06Y6J51ycxMCFA61D3P7eJ">点“开始”。只有签名、越界或无结构证据的候选不再弹出提示；相同格式与字节范围的重复候选合并。唯一且边界与结构完整验证的 ZIP/ZIP64 自动继续解压。</li>
+          <li>唯一、有结构证据、边界不是暂定但仍未达到自动放行条件的候选，会标为“推荐”并默认选中，确认后继续。多个有结构证据的候选或边界不确定时不预选，须人工选择；HIGH 是规则分档，不等于已通过精确验证。</li>
+          <li>需要密码时，提示区优先显示密码输入；任务表也把需密码任务放在候选复核任务之前。同类任务仍按选定列排序。忽略噪声候选不等于跳过整个文件，也不会授权删除源文件。</li>
+          <li data-page-node-id="sWRAmfdkeUi30sOEve9NSF">只选来源可信、边界完整的高置信候选。解压校验通过后，输出和普通任务一样保存。</li>
+        </ol>
+        <div class="notice" data-page-node-id="OxTXzvCBzRukRkep7VGXiD">
+          <strong data-page-node-id="QmNBcto37Y6Y8NByvWHW7Q">多候选需要人工选择：</strong>可免确认自动继续的唯一 ZIP/ZIP64 候选，必须通过中央目录、本地文件头、条目数量和精确边界检查；“文件已入队”本身不代表通过这些检查。发现多个候选、边界不确定或只能部分恢复时，程序不会清理原文件。
+        </div>
+        <p>这套处理规则在维护记录中称为 <strong>B'</strong>：减少只凭几个相似字节造成的无效提示，遇到真正不确定的结构仍让你决定。看到“推荐”可先核对范围和说明，不必把它当成程序已替你确认；没有把握就跳过并保留原文件。源文件清理针对整个外层文件，想保留原视频或图片时必须选择“保留”。</p>
+        <a class="toplink" href="#top" data-page-node-id="gXksySZ5BEPM5R9FrWan9z">返回顶部</a>
+      </section>
+
+      <section id="workflow-nested" data-page-node-id="qOSNtHxg6iyTRh3p6VYBh8">
+        <h2 data-page-node-id="A62Tm8I7omn0Bcc8oG43bB">嵌套解压的边界</h2>
+        <p data-page-node-id="5X6DFrXbBondon6DHGQ3V0">嵌套解压（见<a href="#options-nested" data-page-node-id="OLLX0YRqDReaaO17h0BtYx">选项说明</a>）开启后，程序会继续处理解压结果中的内层压缩包。两个值得知道的边界行为：</p>
+        <ul data-page-node-id="x0zuSLfaMd20hnQRlpbGh8">
+          <li data-page-node-id="i1j8Knv1rM9xtdFn6bjpfB"><strong data-page-node-id="ux7zDWBL066ZLy3j6qIl3y">部分恢复也会继续扫：</strong>只要父任务留下了可恢复输出且嵌套开启，程序就会扫描该目录。不完整的父任务也可能生成子任务——检查这些任务的输出。</li>
+          <li data-page-node-id="AzQciWq4A8EaZ7CXBBrVUo"><strong data-page-node-id="bhhZy9XcFR20uNEvgia3SF">EXE 目录保护：</strong>结构有效、无可确认自解压载荷的普通 Windows EXE 会保护其本目录和父目录不被继续解压，避免游戏或程序的资源包被拆开。改名成 .exe 的压缩包和边界完整的自解压文件不受保护。</li>
+        </ul>
+        <a class="toplink" href="#top" data-page-node-id="dLSImslK84rcTYniOiSaB6">返回顶部</a>
+      </section>
+
+      <section id="cleanup" data-page-node-id="pa0DsDz3mAd7G6UiiMKf2s">
+        <h2 data-page-node-id="EPJEeLqAWVVWCWXglU69Nx">源文件清理</h2>
+        <p class="lead" data-page-node-id="9B2zm0tbdy3SS6rs5Y1GWw">清理是唯一会删你源文件的功能，规则也最严格：只有任务 COMPLETE、输出复查通过、源文件没变、分卷信息可靠、内嵌候选无歧义时才执行。</p>
+
+        <h3 data-page-node-id="HYfRzHuIxe1lbe6ftGQKhZ">三种策略</h3>
+        <table data-page-node-id="QZidmpl7qDXeReZ2kSGLjz">
+          <thead data-page-node-id="nKXjKPmgKf4sdBbJIT0q5o"><tr data-page-node-id="VG0O592yykNlECseqfeVrm"><th data-page-node-id="RCM8vKyDuBTf3TcB9p8SB9">策略</th><th data-page-node-id="9yUsO8qajJo0nnDHKeHE6u">行为</th><th data-page-node-id="pahAXuNRd0kQPyao4WAJB2">何时用</th></tr></thead>
+          <tbody data-page-node-id="ylHy94xrFTrhtO9jpBXXK6">
+            <tr data-page-node-id="aC06rfZpZXipCaO7I7gLhk"><td data-page-node-id="E5EvEPqLF3QTNOB8X9F85r">keep / 保留<br data-page-node-id="qecrNDjbQrB5HMFAEvylRJ"><span class="tag ok" data-page-node-id="EGheHsZlqG7pAga8KJaCJL">默认</span></td><td data-page-node-id="jLIBLkpLpINtiBcSMwul6p">保留源压缩包。</td><td data-page-node-id="wWonuQnZRTKh7rypUADyGQ">首次使用、需要核对结果、重要资料或来源不明的文件。</td></tr>
+            <tr data-page-node-id="GsWFqDSuKvWUKjOVINhwL4"><td data-page-node-id="gdJNuUKOftfXgj6aTxo0DI">recycle / 回收站</td><td data-page-node-id="fAl6jX3Bi8yJWvb2SlkW3y">逐卷检查回收站设置。可以回收的只进回收站；卷明确不支持回收或文件超容量上限时，默认保留源文件并提示（<code data-page-node-id="LHAwPyMKtdES7qSDnvxYj8">RECYCLE_FALLBACK_DISABLED</code>）。只有在“选项”中勾选“回收站不可用时允许永久删除源文件”后，这两类才改走有恢复日志保护的永久删除。</td><td data-page-node-id="GQVUnTVwDFlDP3EIdtDnEj">希望通常可以恢复，且不接受回收站不可用时被永久删除。</td></tr>
+            <tr data-page-node-id="Jx1T8GCGboHRdUs8SwX1B7"><td data-page-node-id="9yHIND6wnjY0N5pzkNz5y1">permanent / 永久删除<span class="tag danger" data-page-node-id="PRlmNDi12y3UKxHoQo2IFM">不可恢复</span></td><td data-page-node-id="YIvZdTbVa1wAtQLwiD5YMr">成功后再次核对源文件身份（设备号、文件标识、大小、修改时间），先记恢复日志，再移入同盘隐藏暂存目录并永久删除。</td><td data-page-node-id="2XkS7PH8ewYrk2GlW5OG24">空间紧张，且文件已有备份或可以重新获取。</td></tr>
+          </tbody>
+        </table>
+        <p data-page-node-id="3oQUBrB4NQ5dmLKB5Lo280">普通命令行和第二个实例默认 keep；指定 <code data-page-node-id="oy8Qzspda5WY1aM9Ql4EbN">--delete-source</code> 或选右键“并删除”才用 permanent。界面中添加的任务记住入队时的清理策略；中途改选项会立即更新到所有未终态任务，已完成的历史任务保持原值。</p>
+
+        <h3 data-page-node-id="Ztbi19ZEVL7HxtQIPmjCXs">“回收站”策略怎么决定删除方式</h3>
+        <p data-page-node-id="tNhHqMRjulU9Ka9En79TuB">清理一组分卷前，程序先确认所有源文件仍在原处，再按卷 GUID 读取当前用户的回收站设置（NukeOnDelete 和 MaxCapacity）并核对每个文件大小。任何一项读不清或源文件缺失，整组清理停止。</p>
+        <table data-page-node-id="3otA2HQFuvXmMtMUxFSUiw">
+          <thead data-page-node-id="x7baexg3EinrYu2tNFYbBi"><tr data-page-node-id="wctvb9UpBvELKk60Cxefkf"><th data-page-node-id="BXP8B31SPkF3mP3ztauuYJ">检查结果</th><th data-page-node-id="X69m1V0lc2MwIXGZrhHVwT">程序怎么做</th><th data-page-node-id="xnhxWqNANocj5jcht0hwbg">能否恢复</th></tr></thead>
+          <tbody data-page-node-id="3H83r6NRFOi2SiI9PY3cye">
+            <tr data-page-node-id="QmztgvyNqFvUfFRrQO9eLW"><td data-page-node-id="mrjhSLkA0GcdI0y81MYQ94">固定磁盘允许回收，文件没超容量上限</td><td data-page-node-id="aQqCHJfpeONYHpdXUEj1D0">通过 Windows IFileOperation 严格回收，禁止 Shell 暗中改成永久删除。</td><td data-page-node-id="DEbYN64RCNuFpKJVihxgoQ">可从回收站恢复。</td></tr>
+            <tr data-page-node-id="UAaZkfFatM4IL7xcs2tkIZ"><td data-page-node-id="DIdeeaw4DRJVovaXexO82U">非固定磁盘、启用 NukeOnDelete、或 MaxCapacity 为 0</td><td data-page-node-id="nYX5nfltA46S1DdODbCtDU">默认保留并提示；仅开启永久删除回退后，才先写恢复日志，再移入同盘隐藏暂存目录并永久删除。</td><td data-page-node-id="WwidNNW2Tl451IxJSjoAtM">默认仍在原处；开启回退并删除后不能恢复。</td></tr>
+            <tr data-page-node-id="SAFns6r3mU4mBnIIOUuHpK"><td data-page-node-id="TEvefAJhiFR6oOItxCREZI">单文件超过该卷 MaxCapacity</td><td data-page-node-id="9NHnnrf7gBCH2qn3vABcgb">默认保留并提示；仅开启回退后走恢复日志、同盘暂存和永久删除，不让 Windows 自行暗删。</td><td data-page-node-id="23ygieFgabP5UjCkOCnlbT">默认仍在原处；开启回退并删除后不能恢复。</td></tr>
+            <tr data-page-node-id="kjzv3YOjDAffjbIKHxVL8g"><td data-page-node-id="PBhBmVvFdhEJwDU6y7LuSp">源文件预检后变化、设置未知、锁定、权限或 COM/Shell 错误</td><td data-page-node-id="pMeHhUjx41vcL7UrxdNJC0">停止清理，不把这类错误解释为永久删除许可。</td><td data-page-node-id="VvCMoJMWUNEsUZba1CpdMY">未处理的源文件保留。</td></tr>
+          </tbody>
+        </table>
+        <p class="small" data-page-node-id="77snKsD1AtjZOJtDvRMOwX">分卷任务何时只处理一部分：整组预检失败时一个卷都不动；只有清理已经开始后某卷运行时出错才会部分处理。已进回收站的卷可手工恢复；未开启回退开关时，不满足回收条件的卷一律保留原处。</p>
+
+        <h3 data-page-node-id="N2lYct6SA6UbucysznO3tI">任务详情和运行日志中的清理通知</h3>
+        <p data-page-node-id="Owcc4OUvz8s9P55iBxVNjz">五条通知同时出现在“任务详情”和“运行日志”。{count} 按消息分别表示已永久删除或已保留的源文件数，不是解压出的文件数；方括号代码不变，便于检索。</p>
+        <table data-page-node-id="3Ha2VgkeDQHyrShf90di0e">
+          <thead data-page-node-id="BLXjVE5It9z3Le9hDnGOS8"><tr data-page-node-id="MiYwzFPfZGgkq9zgaIBNw4"><th data-page-node-id="pC8NvomAw3BlgbbSEdK0XY">代码</th><th data-page-node-id="9tAGxEI5i4nSy6XBIXMmWO">界面显示</th><th data-page-node-id="jA3hMym6lLDh0DiTPZfTU7">含义</th></tr></thead>
+          <tbody data-page-node-id="RKk3Zuh6u3eGgDL0AVrmfi">
+            <tr data-page-node-id="1L9yUqXEW3hSF7H36As0Eq"><td data-page-node-id="bdEDgFtj7rgaf6UfSS9N80"><code data-page-node-id="gblcLmP72QyBBnDyvbduhn">RECYCLE_FALLBACK_UNAVAILABLE</code></td><td data-page-node-id="AZ1ALNl6k2e4fB8os01Okj">回收站不可用，已永久删除 {count} 个源文件 / Recycle Bin unavailable; permanently deleted {count} source item(s) [RECYCLE_FALLBACK_UNAVAILABLE]</td><td data-page-node-id="bB13GypZNCbx81Cx6xUyUB">驱动器类型或卷设置明确表示不能回收，永久删除已完成。</td></tr>
+            <tr data-page-node-id="2wdDj3AWBHBAQTSpTsqT8N"><td data-page-node-id="EmsGsHDffbGXipf5IFHKL8"><code data-page-node-id="wT1TJONw9yHPvEFw13dmnY">RECYCLE_FALLBACK_TOO_LARGE</code></td><td data-page-node-id="BsWXmEnd9tue7UzWwv8y1Q">{count} 个源文件超过回收站容量限制，已永久删除 / {count} source item(s) exceeded the Recycle Bin capacity limit; permanently deleted [RECYCLE_FALLBACK_TOO_LARGE]</td><td data-page-node-id="gaBW4potSo2zbRccWHdJi3">文件大于该卷回收站容量上限，永久删除已完成。</td></tr>
+            <tr data-page-node-id="t2IKcXFXv1cV28NCG137W4"><td data-page-node-id="ujFIRE54Jtt5y46x44mnPP"><code data-page-node-id="6daJFzeuQJJHWcKgF61FTB">RECYCLE_FAILED</code></td><td data-page-node-id="JYgTsUDJLf0BgZxIJ5kUag">回收站清理失败，已停止 / Recycle Bin cleanup failed; stopped [RECYCLE_FAILED]</td><td data-page-node-id="4XjptfeAJtp5UGQMHZJndr">源文件预检后变化、设置无法确认，或严格回收遇锁定、权限、COM/Shell 错误。检查仍在原处的卷，必要时从回收站恢复先前的卷。</td></tr>
+            <tr data-page-node-id="I809ES2cEZW16tBAnMk03S"><td data-page-node-id="UBZEbfUgDxC2lA0mXSyYxV"><code data-page-node-id="tMTGmqDz4fwvl7mJX944dK">RECYCLE_FALLBACK_DELETE_FAILED</code></td><td data-page-node-id="0PRSH180UxhQDRfoQNtfd3">回收站改用永久删除时失败，已停止 / Permanent fallback for Recycle Bin cleanup failed; stopped [RECYCLE_FALLBACK_DELETE_FAILED]</td><td data-page-node-id="PV4ad6mhxH5xQA5AkCtbVA">恢复日志、同盘暂存、永久删除或恢复步骤失败。不要手工删除 <code data-page-node-id="X27okkNTiGmt3hZP4ULaDi">.smart7z_cleanup_...</code>，先看恢复记录并重启程序。</td></tr>
+            <tr data-page-node-id="3voc4Y7JLUNJqhy1NV9lIk"><td data-page-node-id="Jwey2mY4xoqF0gGNsaDa6F"><code data-page-node-id="8RFxRUzzOonLHj1HFJfrHX">RECYCLE_FALLBACK_DISABLED</code></td><td data-page-node-id="3sOOTwKfpzprwU2JsZXCNH">回收站不可用或容量不足，已保留 {count} 个源文件（可在设置中允许永久删除回退） / Recycle Bin unavailable or over capacity; kept {count} source item(s) (permanent-delete fallback can be allowed in Settings) [RECYCLE_FALLBACK_DISABLED]</td><td data-page-node-id="i1C8YVvNvXMZB6JRKyOD8o">未开启永久删除回退（默认），不能回收的源文件保留原处。这不是解压失败，也不要求你开启删除回退；先核对输出和备份，再决定是否处理源文件。</td></tr>
+          </tbody>
+        </table>
+
+        <h3 data-page-node-id="JPhuik6ySbimrrf1mbUUK3">清理会被阻止的情况</h3>
+        <ul data-page-node-id="4lrnR9q4RF4vnpif8si0zN">
+          <li data-page-node-id="Rftm3EQdxoUE0HDKJDZ9cX">状态不是 COMPLETE（FAILED、PARTIAL_RECOVERY、INTERRUPTED、SKIPPED）。</li>
+          <li data-page-node-id="LPv0HgVSD0Pj17pRExfzPr">7-Zip 读清单或解压返回警告，且没有唯一、边界精确的高置信候选确认结果。</li>
+          <li data-page-node-id="btqO6GnCKW3UFWMNvzugEx">分卷缺失、分卷元数据与发现结果不一致、卷索引不可信。</li>
+          <li data-page-node-id="tBuHtqYuuExAYDVfMICIXo">源文件缺失、是链接或重解析点，或运行期间设备号、文件标识、大小、修改时间变化。</li>
+          <li data-page-node-id="gi0XNcx4ztzO41VHel4eZV">跨盘移动输出时 CRC32 与清单不一致，或文件、目录、数量、大小不一致。</li>
+          <li data-page-node-id="3QWu0wtWBBjiOnEP2pFbQ7">输出写入磁盘、移动到最终位置、更新恢复日志或暂存源文件失败。</li>
+          <li data-page-node-id="MCHNwdTtnFCyqqhFVDWDQo">内嵌 ZIP 候选有歧义、边界不确定或置信度较低。</li>
+          <li data-page-node-id="XWONta4e6Oz114VGEBUQwS">输出移到最终位置后的复查失败。</li>
+        </ul>
+        <p class="small" data-page-node-id="Pdjyqm7wUl1CugYBB8Sbah">界面中选“永久删除”会弹确认框。这些检查能处理意外中断、写入长度不足、进程终止和输出不完整，但防不了操作系统仍报告成功的磁盘静默损坏。</p>
+        <a class="toplink" href="#top" data-page-node-id="uLf7QMH3NBZfAoTZqD3s2m">返回顶部</a>
+      </section>
+
+      <section id="recovery" data-page-node-id="YzRgF0v2itqQxmPwMiCAfC">
+        <h2 data-page-node-id="sEQ1NfHRBXeRSrVDmH19s6">恢复与临时文件</h2>
+        <p class="lead" data-page-node-id="nA0B7DjngSe3A360goj0jk">Smart7z 用恢复日志跟踪自己创建的每个临时目录。程序意外退出后，下次启动能据此恢复或保留现场。你通常不需要碰这些文件——知道它们是什么就够了。</p>
+        <table data-page-node-id="tlPqQRWWy2g5s44h7UYXXD">
+          <thead data-page-node-id="EEmrcmEloRbodsrK3Dv6GT"><tr data-page-node-id="00ffAyMyQnbP0OsIYh8hgV"><th data-page-node-id="zRfh1DjQIy3kAylWwzGlWo">对象</th><th data-page-node-id="EaABaYlKlfbINRlV1sPt4S">典型名称</th><th data-page-node-id="12Lqkuih51BBIwFM5Qtx8Y">是什么</th></tr></thead>
+          <tbody data-page-node-id="DwshfzqcsJpmBeI7BgHBXU">
+            <tr data-page-node-id="PgKsoJTILGP9HJMw0DcXyT"><td data-page-node-id="JK5EZahouQmnowNkUQnYg0">会话临时目录</td><td data-page-node-id="Ehx4WozUddICm5DdifiOms"><code data-page-node-id="IaItEN5lQpvURVbqAosula">Smart7z_Session_...</code></td><td data-page-node-id="uvZbZbvhRdBPWTwf8DWyZU">暂存模式下保存解压输出和中间文件。正常退出或下次启动时自动清理（仅限能确认归程序所有的）。</td></tr>
+            <tr data-page-node-id="Nwh7PLSMrf7WBAxEoX7oHC"><td data-page-node-id="QBtTF9hyM3hDcbZnWr51c5">所有权标记</td><td data-page-node-id="ZF1q5DJhHAXDRD0IHuGr2H"><code data-page-node-id="iwfqTQZaxMdrEhN7GFshXZ">.smart7z-owner.json</code></td><td data-page-node-id="LkI6CC1GNe4JdHaYpQRO92">标明会话目录由 Smart7z 创建。别手工复制它。</td></tr>
+            <tr data-page-node-id="IHZ8ry2CaYs0ygGBF3nN95"><td data-page-node-id="8lmJS6pJtdmReyVADdoOTO">输出暂存目录</td><td data-page-node-id="lWVGfzHyextGhBf8TOoTL9"><code data-page-node-id="uKNlmbdDJDax794Bnwevr2">.smart7z_commit_...</code></td><td data-page-node-id="UHOyXNRlRPAyNutB8Mt0ND">输出移到最终位置前的暂存区。异常中断后恢复日志会保留其中可恢复的内容。</td></tr>
+            <tr data-page-node-id="MNeJiehtgeE9eyqt4Icxuv"><td data-page-node-id="VlEufVnOmCGkrjldfuYtnp">源文件暂存目录</td><td data-page-node-id="01J26r9wkQCYJkpvQ6iBT6"><code data-page-node-id="yDEc47nW0TktnkvqolDJqX">.smart7z_cleanup_...</code></td><td data-page-node-id="5tg0umK68wAFlTxU4zC2b3">永久删除前暂存已复查的源文件。中断后优先恢复原路径；原路径已有文件时转移到可见的冲突目录。</td></tr>
+            <tr data-page-node-id="Omv9SEV2Nc9B97UEUxzCG5"><td data-page-node-id="nTMY5MhlxSZgMTbVQCnfgf">部分恢复目录</td><td data-page-node-id="DuNvPa8U12qLqtCVN1WJCk"><code data-page-node-id="e8P4Z6MakAD6zR0L9S80yC">非完全恢复</code></td><td data-page-node-id="8cuKTTdW2HeZCUvOml6FxQ">保存警告、CRC32 不一致或复查未完全成功时仍可恢复的文件。人工检查后再动。</td></tr>
+            <tr data-page-node-id="5Dm90ybgopXMZgP6xNbUG7"><td data-page-node-id="8YMQieAWN4zBV1exxgXHLD">恢复日志与锁文件</td><td data-page-node-id="tLvswFoAKMwohBsP9ZGUGs"><code data-page-node-id="CYzkSzjzQFfYcIRKKBJVQH">recovery-v1.json</code> / <code data-page-node-id="TX2B37lLVJFHHfl2VEe4zY">recovery-v1.json.lock</code></td><td data-page-node-id="vD3qdDXqdWZqDMnPMFA9Fm">意外退出后继续恢复，防止多进程同时改记录。文件损坏时先备份再让程序重新生成。</td></tr>
+          </tbody>
+        </table>
+        <div class="notice" data-page-node-id="1diU2coc3zKvTtVK5ctdMf">
+          <strong data-page-node-id="KYuueVCo9WLtJD0JnoFPAe">断电或进程意外退出后：</strong>已登记但未移到最终位置的输出会保留，不会被当垃圾清掉。永久删除停在“已暂存未删除”时，下次启动按设备号、文件标识、大小和修改时间复查并恢复原路径；原路径被占用则移到可见冲突目录，不覆盖现有文件。
+        </div>
+        <p class="small" data-page-node-id="CegbO53Es6JFdBlFUZOZBP">目录内容变化时不会自动删除：恢复日志按相对路径、类型、大小、修改时间和条目数生成元数据摘要（不读内容算哈希）。目录中出现新增、替换或未登记内容时，整个目录保留。</p>
+        <a class="toplink" href="#top" data-page-node-id="sul8OJ3zykDJpIcRVyqJI3">返回顶部</a>
+      </section>
+
+      <section id="cli-ipc" data-page-node-id="h2iAC86AvUHFR2dsRQzKDc">
+        <h2 data-page-node-id="PBQ6QhjOYp3eP89JvpYpPW">命令行、单实例与右键菜单</h2>
+
+        <section id="cli" data-page-node-id="qBPgJAohvEECjWVsofiEcO">
+          <h3 data-page-node-id="mHmMYsBEMkaAcH7gazFVas">命令行</h3>
+          <pre data-page-node-id="jZuPS97K7ymlHo723gq43c"><code data-page-node-id="iVXu0CXHrkC1BJ7LmLUuq6"># 默认：路径会自动开始
+python smart7z.py "D:/Downloads/a.7z"
+
+# 只加入队列，不启动处理
+python smart7z.py --queue "D:/Downloads/a.7z"
+
+# 明确自动开始
+python smart7z.py --start "D:/Downloads/a.7z"
+
+# 解压到源文件所在目录，并保留源文件
+python smart7z.py --start --extract-here --keep-source "D:/Downloads/a.7z"
+
+# 解压到源文件所在目录；完整成功后永久删除源文件
+python smart7z.py --start --extract-here --delete-source "D:/Downloads/a.7z"
+
+# 停止解析选项，后面的值都当路径
+python smart7z.py -- --queue</code></pre>
+          <p class="small" data-page-node-id="XbmfqVZ4RrquuTqkbY5XCi"><code data-page-node-id="U1Dqoqaf5T9cIybZuY4juq">--queue</code> 和 <code data-page-node-id="ha4BVFvCJr9OBeTsGMiAQN">--start</code> 控制何时开始；<code data-page-node-id="WGJRwERCZS45HXNbUAnLZz">--keep-source</code> 和 <code data-page-node-id="SCHMvacfJQGIZu4jn1WFjB">--delete-source</code> 控制清理。没指定清理参数时用 keep。<code data-page-node-id="vuLzxNYGVGc9gKJdmjFV5t">--extract-here</code> 忽略窗口里配的目标目录，输出放各源文件旁。</p>
+        </section>
+
+        <section id="single-instance" data-page-node-id="sDOyTJ0y7OU85M3KCzocBd">
+          <h3 data-page-node-id="WWfP5yXgh70LRA0zQr2fZy">单实例</h3>
+          <p data-page-node-id="dX3i2WcIc6SX5HSIHxkBnz">程序同时只允许一个窗口。再启动时，新进程通过本机 IPC 把路径和参数转给现有窗口后自己退出。资源管理器多选文件右键时，Windows 可能同时拉起几个短命辅助进程——它们会排队串行转交到同一个窗口，不会开出多套队列，也不会因恢复日志锁冲突失败。</p>
+          <p class="small" data-page-node-id="10lIfG5iaOa7SBG3m0vdef">转发结果四种：accepted（已接收，新进程退出）、rejected（队列满或正在关闭；确定失败以非零码退出）、indeterminate（到达但无确认，先查现有窗口队列再决定重试）、unavailable（找不到现有实例，最多等 15 秒再接管，不会开第二个调度器）。</p>
+        </section>
+
+        <section id="context-menu" data-page-node-id="LBevxEHs68MGSmwaF7cbVI">
+          <h3 data-page-node-id="mbpbQGU48DzXEXb8ash2wA">右键菜单</h3>
+          <p data-page-node-id="wVILO7nd1wGGuhCJHcVMzo">菜单栏“右键菜单 → 添加右键菜单”为当前用户注册两个资源管理器菜单项（写 HKCU 注册表，无需管理员权限）：</p>
+          <table class="compact" data-page-node-id="rrVIAFTw7SXPBggyVqH7VQ">
+            <thead data-page-node-id="ABizVWoxCbK1xYEeCd9TIH"><tr data-page-node-id="LrA7vd8HWewHdAr6tX2Fon"><th data-page-node-id="wIgWqvwxDB3sca2iVAMy86">菜单项</th><th data-page-node-id="V9jOmVhX8gszrTPxZ5jjFE">输出位置</th><th data-page-node-id="w2x5NPYpkW6jahVN3rcN2q">源文件处理</th></tr></thead>
+            <tbody data-page-node-id="ONGRJcMxj5GAOBVzZ6fHCl">
+              <tr data-page-node-id="DUq3QThCfclQb9EP8JR7Od"><td data-page-node-id="VQ4Q3n2EFLknpKAfETr161">智能解压到此文件夹</td><td data-page-node-id="2U9OxrsEwzZSvKz0qDAOZU">源文件所在目录</td><td data-page-node-id="2Q2AyQCfyxbopwfxML9O4C">keep，保留源文件。</td></tr>
+              <tr data-page-node-id="xksNvzmVMyfwOVz3Kxr5pe"><td data-page-node-id="xCumA3i0Nn1ovIV6MIPIYs">智能解压到此文件夹并删除</td><td data-page-node-id="uwVwuzgnmM85jFUBh0NhPH">源文件所在目录</td><td data-page-node-id="o1zOZuLT6zc8glzMWRWe3x">permanent；完整成功并通过全部复查后才永久删除。</td></tr>
+            </tbody>
+          </table>
+          <p data-page-node-id="Uk96IBACHPUFLJPdMlUHC5">两项都自动开始处理。右键目录时先扫描再逐项入队。</p>
+
+          <h4 data-page-node-id="ctL1XqD0ziVyM4ulErkDZQ">右键窗口何时自动关闭</h4>
+          <p data-page-node-id="AQksdpvHfe4ubF7Lm71Wig">只有“最初由右键菜单创建”的独立窗口才有资格自动关闭：所有任务无异常完成、无提示、扫描和待接纳全部结束、无密码或候选确认挂起时，按正常流程保存配置并退出。以下任一情况窗口保留：窗口原本是普通方式打开的；右键窗口后来又被双击激活；出现失败、部分恢复、中断、跳过、需密码、候选复核、扫描失败、未接纳请求或程序异常；没发现任何任务。框选多个压缩包时，后续右键请求会重置关闭检查的等待，避免第一个小包先完成就关窗漏掉后面的。</p>
+          <div class="notice warn" data-page-node-id="BGFxNYXH8QSSnrgrYY1L5X">
+            <strong data-page-node-id="vrKiMqu2NotsZOBHkBivQx">“并删除”不走回收站：</strong>源压缩包通过全部清理检查后会被永久删除。要保留恢复余地，选不带“并删除”的菜单项。
+          </div>
+          <p class="small" data-page-node-id="ntyI2xJGgVd3s3uEx6DZm2">升级到双菜单版本后：先关旧实例，再运行新版重新执行“添加右键菜单”，程序会移除旧的单菜单项。</p>
+        </section>
+        <a class="toplink" href="#top" data-page-node-id="4krlGthH3YG7moDkKI2Hcb">返回顶部</a>
+      </section>
+
+      <section id="cancel-close" data-page-node-id="7WDuEKUELMuHBhFtfssni7">
+        <h2 data-page-node-id="RQDVEuTGg7NOPkfDg3eWUm">取消与关闭</h2>
+        <p>取消任务不等于删除源文件，也不能撤销已经完成的清理。只想停止某几个任务时用“取消选中”；只想停止正在解压的任务时用“取消当前”。本手册中的“取消所有”指工具栏的“取消所有待处理”：仍让当前任务继续，该任务完成后可能按它的清理策略处理源文件。</p>
+        <table data-page-node-id="LUD4Rp6suYYGEuPwgK0IZT">
+          <thead data-page-node-id="xsZ6NIoGKqs9HERi9POuBI"><tr data-page-node-id="KrXyp3cJfbFNTPzswMnGcn"><th data-page-node-id="AE6etkjEFcKJXrhgzuirrS">操作</th><th data-page-node-id="jAUxiFn8z9lhyQMzzlkMKN">效果</th><th data-page-node-id="9TdGmMi1U3LBqA1w17Xc8x">源文件</th><th data-page-node-id="3LUKuzpQGDpezKi9EYEyz9">输出</th></tr></thead>
+          <tbody data-page-node-id="bBEcONaVXPlX6zozpIVckh">
+            <tr><td>取消选中</td><td>移除选中的未完成任务，包括等待密码或候选选择的任务；活动任务先请求安全停止。未选中的任务和已结束的历史行保留。</td><td>取消本身不删除源文件。</td><td>迟到的后台事件不会让已移除任务重新出现；已完成的输出不撤回。</td></tr>
+            <tr data-page-node-id="GJbZEKWUbiAUpqngv8Asi8"><td data-page-node-id="4zWxndpxvRjUkoYjrO2ZEw">取消当前</td><td data-page-node-id="1gMqU1YBeDoB7dEMLHEjww">通知当前任务停止，结束正在运行的 7-Zip 进程。</td><td data-page-node-id="lvmcmgX8rdbGHVsne7eiy2">保留。</td><td data-page-node-id="CSqv7r5wXU3a8Y5WAzU9mQ">未移到最终位置的临时输出会清理；已完成的输出不撤回。</td></tr>
+            <tr data-page-node-id="LXPnIzMNHQ7xRkaQpCIIyR"><td data-page-node-id="Wbk0LpAUnydZEDw4XEDjjO">取消所有</td><td data-page-node-id="8l3uQcUgyKRZlX2quB8A0s">当前任务继续；其余未完成任务直接从任务表和调度器移除（不生成“已中断”历史行），同时停止目录扫描、清空待接纳请求。</td><td data-page-node-id="8vfKAVOABrCiCwTMA8GwDT">被移除任务保留源文件；当前任务仍按其策略处理。</td><td data-page-node-id="sHVfMOxvfG0YItMIQaDJpJ">旧扫描迟到的结果被丢弃，可立即重新扫描。</td></tr>
+            <tr data-page-node-id="o8OkFijFLqdxBkhi17BDdP"><td data-page-node-id="n6CV43vM4XnEWf3UCRCbx6">关闭窗口</td><td data-page-node-id="BtWbDlWLkv1VrgY9IKtp4g">停止接收新请求，关单实例通信，后台等待调度器和工作线程退出。超过约 5 秒标题显示“安全停止中”，不会强行丢弃状态。</td><td data-page-node-id="Dz68JDVKNwc95qYyQUEbVM">已完成任务按所选策略处理；其他任务保留源文件。</td><td data-page-node-id="oSMLidtCxpe3FkJ2ND20DF">所有扫描线程共用约 1 秒等待时间。</td></tr>
+            <tr data-page-node-id="uoWIG3SvF2UgXpMlp15UCk"><td data-page-node-id="mGIrgqE4seZGCSPqai8UYP">右键任务自动关闭</td><td data-page-node-id="5n38QXVsSm9HyMG7AksPEA">仅限右键菜单独立创建且未被再次激活的窗口；全部任务无异常完成后按正常流程退出。</td><td data-page-node-id="Jwr5I1GmbsiWq8AxsJvjJy">按每个任务入队时的右键策略处理。</td><td data-page-node-id="LDyH3neiYnxPkE7WTGMrDR">任一异常、提示或恢复复核都会保留窗口。</td></tr>
+          </tbody>
+        </table>
+        <a class="toplink" href="#top" data-page-node-id="nxkbeDdd3JQF8O23gTtRRe">返回顶部</a>
+      </section>
+
+      <section id="troubleshooting" data-page-node-id="25tfCDUTyt2hOXSVkVW0Z0">
+        <h2 data-page-node-id="SB5r00fR6NRKLO4E4T5yhZ">故障排查</h2>
+        <p class="lead" data-page-node-id="RHI5PBaltIMgGgjdue1eNq">按现象查表。多数问题有现成答案。</p>
+        <table data-page-node-id="zEji1a7R7lMy7C5a51dcRS">
+          <thead data-page-node-id="TGsPm3skVTP0ODGOibG9x6"><tr data-page-node-id="7MDD3XDUxSLWeXZRfOmaxZ"><th data-page-node-id="GJ2Ql0QqDiZoZIBYETXrJD">现象</th><th data-page-node-id="2ETUbmjVdOoQeXP2viYRX6">可能原因</th><th data-page-node-id="XAncKbxuto0JmIN9dbQsMU">处理</th></tr></thead>
+          <tbody data-page-node-id="SSJb7jgXaDdg5c1UG3PUmg">
+            <tr data-page-node-id="Ozs7hKeS3ga8y6LY4OnaKo"><td data-page-node-id="5q5Py02vaZWXgAtiJfVTrH">启动时报找不到 7z.exe</td><td data-page-node-id="BVl7pYPLAwcixO5fdSvfaC">配置路径无效，系统标准路径也找不到 7-Zip。</td><td data-page-node-id="b0O7v6EC8zil0nHSudDbvf">装 7-Zip，或把 <code data-page-node-id="NaWBMHZbnfSPgw0zSdd1RM">7z.exe</code> 放进程序目录，重启。</td></tr>
+            <tr data-page-node-id="s5zg624rHShVCcfMITHC7E"><td data-page-node-id="WFkznC2iZo5YV15TfeHJEQ">点“开始”后提示配置保存失败</td><td data-page-node-id="6pYDiFky0cC3sFYzo5rwsa">目标目录、暂存目录或密码文件路径无效；便携模式下 EXE 目录只读。</td><td data-page-node-id="dXKfLYFN5nlofXqPIUsKQi">改用可写目录。安装版查 <code data-page-node-id="OKfCMy4bDO1Ht5J6u8HaCz">%LOCALAPPDATA%/Smart7z</code>；便携版查 EXE 目录或移除 <code data-page-node-id="sfoOzZTKQLnvsvsIOAHh75">portable.flag</code>。</td></tr>
+            <tr data-page-node-id="dEDjzzT2MXPb8WCCNMWKP1"><td data-page-node-id="MwXfWopjs0BgUnLCwrBtxU">任务一直显示 SPACE_WAIT</td><td data-page-node-id="oxJpVF53lcpqJzBnBsS2a8">目标盘或暂存盘空间不足。</td><td data-page-node-id="9UGIw1KuSLuG0BPFTGiDF6">释放空间、换目标目录，或取消任务。</td></tr>
+            <tr data-page-node-id="BoxuJ0yBtoNoLXo5VsVkN7"><td data-page-node-id="yL2BBfXK28ZK70qqgJ7J4R">需要密码</td><td data-page-node-id="7eGaiHUH5RM0IHWbtZPFPV">手动输入、本批次成功密码和密码文件候选都失败。</td><td data-page-node-id="5M07u6gQi8SrLuDoRzyUHe">提示区输入正确密码；不确定就跳过。</td></tr>
+            <tr data-page-node-id="cM2FxwrL6QN9wifLJiTjcv"><td data-page-node-id="RFrPKCJHepCRQICyx6f3ng">任务显示“部分恢复”</td><td data-page-node-id="8EunL3AuM2FDhxGiVqtKAO">7-Zip 返回警告、CRC32 不一致，或输出移动和校验未完全成功，但仍有文件可保留。</td><td data-page-node-id="pEtNHqQXpDJentyBBWq0wH">检查“非完全恢复”目录；这类任务不清理源文件。</td></tr>
+            <tr data-page-node-id="SHXveBoLzAHWvfYHO8lrFO"><td data-page-node-id="nnJZYpC3eonQe3jhYlRivX">扫描文件夹没发现隐写 MP4/MKV 里的内嵌 ZIP</td><td data-page-node-id="nhsgs8GtgcBKCEBBFATJnB">容器原子、SeekHead、附件元数据或 ZIP 边界无法确认，或布局不在支持列表。</td><td data-page-node-id="81HWWKMPu0j3zBtHL7Rvz4">兼容模式下确认文件是否由支持的布局创建；未知布局改深度扫描，或“添加文件”直接加。</td></tr>
+            <tr data-page-node-id="6DiAz5GUTjix2NiCB51jBU"><td data-page-node-id="GAqFVWHUI47rium0E70TtE">右键发送目录后没立即显示</td><td data-page-node-id="WgLErI4MOj6JMXvScj69iI">另一次目录扫描未完成，请求在“待接纳”列表排队。</td><td data-page-node-id="nHQEN7OmuqVBeydl1csGy4">等当前扫描完成，程序自动接续，无需手动恢复。</td></tr>
+            <tr data-page-node-id="OoKPyqPplX1ngh69Bl7BC3"><td data-page-node-id="C0faAibCW2TYJjFa7C5rLP">右键任务完成后窗口没自动关闭</td><td data-page-node-id="XpSGfQabRgJCrfqLBuNGR2">窗口原本是普通方式打开，或右键窗口被双击激活过，或本批有异常/提示/扫描失败/零任务。</td><td data-page-node-id="RRlKRWH3po6qpw95zegAyG">查看任务状态和日志，确认后手动关闭。想要自动关闭：先关普通窗口，再从资源管理器右键启动。</td></tr>
+            <tr data-page-node-id="7HNIHuYcFLmFuc4HObjFLA"><td data-page-node-id="RDNnYMCCRf6mooqIhApY7Q">提示“启动请求未转交”</td><td data-page-node-id="JROvXwfEd537NobCMcPXZs">另一个 Smart7z 正在启动，15 秒内既没建立 IPC 也没释放启动互斥量。</td><td data-page-node-id="Fv3t2bPaspJ9lQowlG30wb">确认现有窗口是否还在启动或关闭，稍后重试。任务管理器里有长期无窗口的 Smart7z 残留进程时，结束它再启动。</td></tr>
+            <tr data-page-node-id="QsBSg0Rn57qpOvZGnUTI0q"><td data-page-node-id="tSWRTVaSMJ7Gidy63JzYSD">日志出现 ARCHIVE_BLOCKED</td><td data-page-node-id="XI2uAGvzBNRIePK9aTH5lh">压缩包命中路径安全、清单完整性、条目数量或输出容量限制。</td><td data-page-node-id="n032sltaKSFYZnS023NxCq">看同一行末尾和任务详情里的专属原因；源包已保留，其他任务继续。</td></tr>
+            <tr data-page-node-id="eigLcoRVcxB1KHhH7gVKp6"><td data-page-node-id="1Q0lJmC7aURt1KBk0rgT7a">源文件没有删除</td><td data-page-node-id="cXkQwSb7alUPGnTrPoDIvB">选了“保留”，或状态不是 COMPLETE、分卷信息不可靠、候选有歧义、源文件变化、输出复查未通过。</td><td data-page-node-id="5k0CAYMwUqBbCQRWfrlbeU">任务详情里看“源文件处理”原因。</td></tr>
+            <tr data-page-node-id="bEKavOB66ANFb50WmvMsne"><td data-page-node-id="aIBI80ySKMgMsxtQIp9Ti0">日志出现 RECYCLE_FAILED</td><td data-page-node-id="Nt4OAfKeu2lixPHy04Of9O">源文件预检后变化、回收站设置无法确认，或严格回收遇锁定/权限/COM/Shell 错误。</td><td data-page-node-id="81ODzlVSqbuhvtAv0T944F">查哪些卷还在原处、哪些已进回收站；排除源文件变化、占用或权限问题后再处理。</td></tr>
+            <tr data-page-node-id="bUPNfJCCnhHn8FBcC4ajg9"><td data-page-node-id="qzSvXU9J7LRvMkJrXQSHJv">日志出现 RECYCLE_FALLBACK_DELETE_FAILED</td><td data-page-node-id="cS4DAqxqN1TTwPbjtbDY2U">回收站兜底的恢复日志、同盘暂存、永久删除或恢复步骤失败。</td><td data-page-node-id="7Z9lCnRRCyUOTzaK5EAlHE">保留 <code data-page-node-id="2Ot0LbWDLSQc377Kols9wN">.smart7z_cleanup_...</code> 和恢复日志，重启程序执行恢复；不要手工覆盖原路径。</td></tr>
+          </tbody>
+        </table>
+        <a class="toplink" href="#top" data-page-node-id="0WwdJ6F0yZRKXAYvMfr4O8">返回顶部</a>
+      </section>
+
+      <section id="common-recipes" data-page-node-id="1BSoCaYoytU84UbMSZlHjL">
+        <h2 data-page-node-id="TlesEqS0PqfSSzAPKMVdBj">常见任务</h2>
+
+        <h3 data-page-node-id="szEPJbfexM6OAI3skivNQx">整理下载目录中的压缩包</h3>
+        <ol class="step-list" data-page-node-id="YRLy4MsMXC8wzegdFyMNET">
+          <li data-page-node-id="x9MF9JAGnXdwxJ5XXrLCJB">“解压选项”行选“保留”或“回收站”。首次不要选永久删除。</li>
+          <li data-page-node-id="eBGH1SGDj1gNmT26knGcxj">勾选“暂存模式”，菜单栏“选项”勾上“空间不足时等待”。</li>
+          <li data-page-node-id="7mZqfnPqDheNaXmVoWgaHA">点“扫描文件夹”，选下载目录。</li>
+          <li data-page-node-id="Z6GZ7gr4nqtLIGOUzTeftA">检查任务表只含预期压缩包。</li>
+          <li data-page-node-id="oDr8KApzaST3UM1usRLG1v">点“开始”，完成后“清除已完成”。</li>
+        </ol>
+
+        <h3 data-page-node-id="BWKr7zkbwyCxYw4wS0NzhT">处理一组相同密码的 7z</h3>
+        <ol class="step-list" data-page-node-id="0aXG3zRKZmjJgIXbKvyVW7">
+          <li data-page-node-id="Weu9BF9p5bVyZOcku4SqBW">常用密码写进密码文件，一行一个。</li>
+          <li data-page-node-id="EZfcGU0nJ5YpDEUbYdP4SN">本批次密码统一时，直接填“主密码”。</li>
+          <li data-page-node-id="kyr4jjvd79hUCtZymIdE1j">添加所有 .7z 文件，点“开始”。出现密码提示时输入，成功后该密码提升到密码文件顶部。</li>
+        </ol>
+
+        <h3 data-page-node-id="d8rMoqk25r4V7fDTZCgEj2">解压隐写者 MP4/MKV 中的内嵌 ZIP</h3>
+        <ol class="step-list" data-page-node-id="w8cpqDRZsQMmtYAFN8aJEP">
+          <li data-page-node-id="tZoez2RRFfkjUHdxoi6rfJ">确认菜单栏“仅兼容隐写者模式（非全读取）”已勾选。</li>
+          <li data-page-node-id="GYDbDOQE1ursqIzvxmzNbz">“扫描文件夹”。MP4 追加 ZIP、ZArchiver free 原子、MKV ZIP 附件会被跳读定位后入队。</li>
+          <li data-page-node-id="zADQYeFlfdjt2YCoX57Y99">未知布局没找到时，改“深度扫描模式（全文件读取）”，或“添加文件”直接选媒体文件。</li>
+          <li data-page-node-id="IuoN54eX2A2IU9yYqcalIW">候选列表出现多个候选时，只选来源可信、边界完整的。</li>
+        </ol>
+
+        <h3 data-page-node-id="Q0zJWP2XO7hwMMs8I7tOgS">只加入队列，暂不运行</h3>
+        <ol class="step-list" data-page-node-id="SNw9l011kruEQXRtvg0Jf5">
+          <li data-page-node-id="uA6t43arYgt8faffQMamMx">GUI 添加或拖入文件（默认只入队）；或命令行 <code data-page-node-id="msSjpi54HVkuciIG1bsALN">python smart7z.py --queue "D:/a.7z"</code>。</li>
+          <li data-page-node-id="HjloMt0zCxxQ8iQctWPnjo">确认队列、选项和清理策略后，点“开始”。</li>
+        </ol>
+        <a class="toplink" href="#top" data-page-node-id="UmbFAQOU8Le9t1Jed6Ae2t">返回顶部</a>
+      </section>
+
+      <section id="state-reference" data-page-node-id="nJQvnLypeB8JB7BQ3HofJU">
+        <h2 data-page-node-id="H6FJlp5p1iYppTvGlNqF7r">任务状态与错误</h2>
+
+        <h3 data-page-node-id="JoeyxpyZgz6LhrDQoXAs9K">任务状态</h3>
+        <table class="compact" data-page-node-id="7zXMmHffVVYHE2n3il0q1k">
+          <thead data-page-node-id="BsjjaQ6pNbSG9dVeOSEika"><tr data-page-node-id="ikJ89OQ0akBqLlHX0K4nWe"><th data-page-node-id="uzafglVePk0spLkDAssjKH">状态</th><th data-page-node-id="J1aheukhGgPvCOGJs0zhoR">含义</th><th data-page-node-id="BWG6K90BLemc5CCEuT6uNc">你要做什么</th></tr></thead>
+          <tbody data-page-node-id="aHoTezT19Q9Zfe0wbSlEDq">
+            <tr data-page-node-id="wB9L7AeEWaWbcnyD6Q9ZuL"><td data-page-node-id="nSntnfhFh4BLGUEMzPa4DA">QUEUED</td><td data-page-node-id="oUBH0qTHe2KtFaXx2n2ue8">已入队，等待启动或前面的任务。</td><td data-page-node-id="Jx744XAYyJfA0wKIWqE3ao">手动添加的需点“开始”；自动开始的等就行。</td></tr>
+            <tr data-page-node-id="Ts1rXa6NX3WmzuWDo9UwBk"><td data-page-node-id="ANdNIwEKt8u2HDtQzQ1X4Q">DISCOVERING</td><td data-page-node-id="2EnCUPkWFskhrLI727joaJ">正在识别结构和分卷。</td><td data-page-node-id="bYGFZa3NMxAaE81LMldtT8">等待。</td></tr>
+            <tr data-page-node-id="As4HAEUoVmWDQbElZy6qXt"><td data-page-node-id="aZcKiPwhEwDXD48MBoVRvZ">GROUPED</td><td data-page-node-id="N1pl715C6I4AGfZUHD5uXE">已识别为一组分卷。</td><td data-page-node-id="Oq9Oasp1dBhDdhcfkZ5Aa8">若随后报缺卷，补齐整组。</td></tr>
+            <tr data-page-node-id="g24vBGNwa5gAKdrM5cRdcP"><td data-page-node-id="zDKnKCTZW8aPRoCEL8hWpK">STANDALONE</td><td data-page-node-id="amP4CUeqwb9kEylE09j4xU">按单个压缩文件处理。</td><td data-page-node-id="tUCAFQW35PhbRnjbTY01yu">等待。</td></tr>
+            <tr data-page-node-id="Rmtj6KCYu9PTIvJXtljH7X"><td data-page-node-id="WRlNlQRZGjv3YKd8YvsMfZ">STEGO_CANDIDATE_REVIEW</td><td data-page-node-id="HZdw6obqbp3dTF1GtDsZ7V">需要选择内部结构候选。</td><td data-page-node-id="TKQemrSsdAatqHiD9aXJeO">选可信候选或跳过。</td></tr>
+            <tr data-page-node-id="GBiHKhg1sB0rtNWGLmVKCS"><td data-page-node-id="49M7q09zZ5T73wmQZ5R3UD">LISTING</td><td data-page-node-id="fbgJEJDgaKA1q70QDRe4HG">正在读压缩包清单。</td><td data-page-node-id="uEUyjYHAMgPiup05uVGIXh">等待。</td></tr>
+            <tr data-page-node-id="Fj5uESQGNRsFrpckNTieVK"><td data-page-node-id="BoLeBZlWEk6AtdxZuYQDtP">PASSWORD_ATTEMPT</td><td data-page-node-id="D5pKdrDDK0s7Fr1a4JApP9">正在试密码候选。</td><td data-page-node-id="AsUHTLGOqySom7DlzkpueG">等待。</td></tr>
+            <tr data-page-node-id="TRgx7Hbl4RVZXLyKWmuyz4"><td data-page-node-id="neowEweiQTRsW6YjqC2EMn">PASSWORD_REQUIRED</td><td data-page-node-id="uRSRW0vyZ4yPkCbZfp9LUH">所有候选失败，需要手工密码。</td><td data-page-node-id="yaaWPx5J9rDGVSZLYAw1M7">输入密码或跳过。</td></tr>
+            <tr data-page-node-id="p3D42jZCnPZB4BV7Gnsi5u"><td data-page-node-id="gMYBgHTFI0uewyyd07BH4D">PLANNED</td><td data-page-node-id="UiDHiFTGqxG6vV4ytJqmLW">清单检查通过，已确定输出空间。</td><td data-page-node-id="ebHrMdvptPtcjV9L5njwol">等待。</td></tr>
+            <tr data-page-node-id="hloCwQirTAVS96Vs2a8unD"><td data-page-node-id="EAi5Cw1NGeYRmnAwQtSJ6Z">SPACE_WAIT</td><td data-page-node-id="JGApDFMmydCIWfdXclzWXx">磁盘空间不足，等待中。</td><td data-page-node-id="oxF01f7mzxBrGdn2w1rt0R">释放空间或取消。</td></tr>
+            <tr data-page-node-id="Dd2MQGJHNaYfalPpb3jgbg"><td data-page-node-id="UaAZoLgjL1vwcJj6nONv6V">EXTRACTING</td><td data-page-node-id="gzpVRTZH7nGQjaZbnvwiXC">正在解压。</td><td data-page-node-id="DNiWyzOeHtzKhzqVuIS6rH">等待；可取消当前。</td></tr>
+            <tr data-page-node-id="XCJfHRXLgDtqivgIUNmlGY"><td data-page-node-id="OU7VkXgzzDWvkakyBP3CHS">VERIFYING</td><td data-page-node-id="mYEiYREQPMwIVBV5GtXPf4">正在核对解压结果。</td><td data-page-node-id="H06TDZhZ6bql3SggpEVZHa">等待。</td></tr>
+            <tr data-page-node-id="QdHwZjIflXL1CUOpH9BFFw"><td data-page-node-id="Ei4KaZMqP1URlPiLDFD46N">COMMITTING</td><td data-page-node-id="TlFeZbl1fMNAcwa6wBTYbC">正在把输出移到最终位置。</td><td data-page-node-id="wc1SlTklWTH9TtqxqebqqL">别手工移动目标目录。</td></tr>
+            <tr data-page-node-id="TLtJzpm4nnBDvH6TPL6hFz"><td data-page-node-id="WCHwFSO8q0loBX54fhknIt">COMPLETE</td><td data-page-node-id="1N0gAnsJx1e2K13lGyNT6S">输出已完整写入并通过复查。</td><td data-page-node-id="LFDgKMoCzsankAL7b70JTJ">检查输出；源文件按入队策略处理。</td></tr>
+            <tr data-page-node-id="jBXofAfzNHAgddNn9ww8lo"><td data-page-node-id="vUGA4v5EYEl6kJqTkh0iW0">PARTIAL_RECOVERY</td><td data-page-node-id="xlSNEIES3ulubCnkG3dxFo">未完整成功，保留了可恢复输出。</td><td data-page-node-id="mR6wCosGa2IsVSzF9LiLfr">人工检查“非完全恢复”目录。</td></tr>
+            <tr data-page-node-id="9pRgDxxjFfkj496j5G5JI2"><td data-page-node-id="DdZC9XtGhKNUJ1WxTopVj8">FAILED</td><td data-page-node-id="ohhdU8nG5GU1FqTuUUVN2r">失败且无可提交输出。</td><td data-page-node-id="H7KYhkgwcY5kc4zFVTtNnT">看错误分类和日志。</td></tr>
+            <tr data-page-node-id="vI5J74U5ojcrD71iV8QQeh"><td data-page-node-id="jUyCm1SGjS0WJUFbnt1oOa">SKIPPED</td><td data-page-node-id="OZEeTPoRNcFX9CpLqidH84">用户跳过。</td><td data-page-node-id="DKzoJvZU3KgdqVPqtUEc2N">需要时重新添加。</td></tr>
+            <tr data-page-node-id="OFHLatUMZZcG06CmzFzD8R"><td data-page-node-id="KA0GUqFjGhMEE3jGrOm0wD">INTERRUPTED</td><td data-page-node-id="PhBSTZswEGTMW8pGt0bf4Q">取消、关闭或调度停止。</td><td data-page-node-id="xFiQ8gQyemIHrmlHB0LWas">需要时重新运行。</td></tr>
+          </tbody>
+        </table>
+
+        <h3 data-page-node-id="0mpFGYH9IYaDGEX4ENpVhN">错误分类</h3>
+        <table class="compact" data-page-node-id="zqs8KY9ZTzOb69tqt8rgtY">
+          <thead data-page-node-id="72W6BZlLFX7K2wQrcidEXd"><tr data-page-node-id="iivl53tkr1QMxlCs5N50MM"><th data-page-node-id="6PTz6c1Tc4MuZMy5hvjsHx">错误</th><th data-page-node-id="9Wlkx1aliSS3i2pv8KT8oQ">含义</th><th data-page-node-id="xjF2VD4ouU15qlop5XawPh">常见处理</th></tr></thead>
+          <tbody data-page-node-id="RTUHIiWJs2SNwndQffrfnu">
+            <tr data-page-node-id="K4ZB1l9bRsmh75wmqVDhEf"><td data-page-node-id="rPx5xQaSBeXR4uS0J0Cc0H">NOT_ARCHIVE</td><td data-page-node-id="xqyLnMKm2vZvRJP1NocqJH">7-Zip 无法作为压缩包打开。</td><td data-page-node-id="GJ9cJTCpdRRxFSPWT3LQrh">确认文件完整；怀疑有内嵌 ZIP 就直接添加做结构扫描。</td></tr>
+            <tr data-page-node-id="UEpfNfj5Boz4vrZiGzGYmF"><td data-page-node-id="kcLiGX4hb0Ves4CinYs1Mc">UNSUPPORTED_FORMAT</td><td data-page-node-id="0lly7ec5fnmFzzWzYR4ZY4">格式不支持。</td><td data-page-node-id="f9qFeEJRhEcBs2C58W2bRT">升级 7-Zip 或换工具。</td></tr>
+            <tr data-page-node-id="RU17XPbX414vooiCDYUyrR"><td data-page-node-id="4p1uEpkqHD39YYGUrwZDwJ">BAD_PASSWORD</td><td data-page-node-id="GmAk4CXBYljHZHZD0V1tOW">密码错误或缺失。</td><td data-page-node-id="jB43SBrTqLCouDOPImF9hi">输入正确密码，维护密码文件。</td></tr>
+            <tr data-page-node-id="E8obkbHIaz5zaG3sxHxh7U"><td data-page-node-id="I1ZPqIS13boQsWczNV1FD1">MISSING_VOLUME</td><td data-page-node-id="6785xePzA2P7mASBLKQ9A2">分卷缺失。</td><td data-page-node-id="Xfngx7bNF4IGg1jORKyT6k">补齐所有卷。</td></tr>
+            <tr data-page-node-id="s84bWqy2mv8KbEvpCcjH7M"><td data-page-node-id="xzDpMqogfCy6zeJy7Go320">CORRUPT_HEADER</td><td data-page-node-id="eCPx43svJ9jzQAnlTLCvsY">头部损坏。</td><td data-page-node-id="L3POliSKuszKcFQLV2cfXE">重新下载或用恢复工具。</td></tr>
+            <tr data-page-node-id="hsEuRPFcf16NpPt08WpGbN"><td data-page-node-id="SiW121c2nYEHAfJF9zRiWj">TRUNCATED_INPUT</td><td data-page-node-id="vqwEQfEJy4vatgKTpzUfOO">输入截断。</td><td data-page-node-id="vY87CAnoS4cWIHIGRhQ32C">重新获取源文件。</td></tr>
+            <tr data-page-node-id="s7zBFSaBs1GpBU13P5nmZR"><td data-page-node-id="s0CYjunsYobW2x66vsnCQx">DISK_FULL</td><td data-page-node-id="TTn26z4SfsBXtdH5WZjOon">空间不足，或预计输出超配置上限。</td><td data-page-node-id="2uHyrHP1AZNlyeqw31poAV">释放空间、换目标目录或调整上限。</td></tr>
+            <tr data-page-node-id="oscAXo7dyXwA0msAjSk0DX"><td data-page-node-id="DxQNQKrVEnbpbkGAAYvgKE">TIMEOUT</td><td data-page-node-id="FaTBaYdRt0ohqTDWDN0GSZ">7-Zip 操作超时。</td><td data-page-node-id="3m7GPMASecUJjgAAMuGgRw">重试或检查文件/磁盘。</td></tr>
+            <tr data-page-node-id="01ba8RuJoXZrJsiCzP9vYM"><td data-page-node-id="tSUDrv4PvFz47GHlcTXvvm">CANCELLED</td><td data-page-node-id="qPXnV3vHsRZXTn5Oiy6n8O">用户取消或关闭。</td><td data-page-node-id="8hb0UBO9yPRw8haTaySu4P">需要时重新开始。</td></tr>
+            <tr data-page-node-id="pozFasVmE5LupYYDzysXYJ"><td data-page-node-id="6ok6DyfBV6CBFIYUGP1FB8">UNSAFE_PATH</td><td data-page-node-id="CLZnnyEOsMFLcAFmj0gtKd">清单或输出含不安全路径。</td><td data-page-node-id="UmUPgNdf3CKoiBiayEidBE">别强行解压到工作目录；隔离分析。</td></tr>
+            <tr data-page-node-id="UybeyOZ8cXQQUc0563cuIZ"><td data-page-node-id="6oOxnb7lCGYfzKLs8yWKzY">OUTPUT_CONFLICT</td><td data-page-node-id="iI22y7wykNTyNSztFMhUw7">移到最终位置时冲突或失败。</td><td data-page-node-id="S7XiiFsWH1tciBOcv96MKU">检查目标目录和“非完全恢复”目录。</td></tr>
+            <tr data-page-node-id="jFT6CuydSJVBSnlNtCwO6q"><td data-page-node-id="ptGHsCw0vzEe9BMFXmbvDZ">VERIFY_FAILED</td><td data-page-node-id="pEZXnzle8e564GxE8CrV1X">输出与清单不一致。</td><td data-page-node-id="O64KAydlVRVIqSIlOxvsRp">检查“非完全恢复”目录。</td></tr>
+            <tr data-page-node-id="thKweUDtr67dqVVUuEyFBj"><td data-page-node-id="F0MPe2FjIuBYU5GUg2cNX2">INTERNAL_ERROR</td><td data-page-node-id="qDZFtymIUqs10e5aU6Px2b">程序内部或系统调用异常。</td><td data-page-node-id="prXCYJHLJMzFJqdhea6LBE">保留日志和源文件，重新运行或反馈开发者。</td></tr>
+          </tbody>
+        </table>
+        <a class="toplink" href="#top" data-page-node-id="xUwpKOZBDzp2vA5QW79CER">返回顶部</a>
+      </section>
+
+      <section id="appendix" data-page-node-id="KQkSJMfxc6hyRuedIyMHWG">
+        <h2 data-page-node-id="gdochanFLW3GECEk6vsrM8">术语速查</h2>
+        <table class="compact" data-page-node-id="fIImGzMrrN5DV3wKuToeEw">
+          <thead data-page-node-id="GVgdK2CFNqKMEutKMvV6hA"><tr data-page-node-id="6GtOY5zN7FUpq65KO4cayA"><th data-page-node-id="givAuw0NcAKeBQZVCrFHOi">术语</th><th data-page-node-id="ORgsDkwRDpI4MdCyjRPdB8">含义</th></tr></thead>
+          <tbody data-page-node-id="ZwD6brZo5fNN05HSErzqI5">
+            <tr data-page-node-id="xbvXz9R3BL1Z5oDFiUV5Ug"><td data-page-node-id="vZd3Vxg2krEoyiQ64RRwX7">显式输入</td><td data-page-node-id="rjTidy1OJ5tdFUPKjCCscf">用户直接指定的文件（“添加文件”、拖拽、命令行文件路径）。</td></tr>
+            <tr data-page-node-id="hs4lHaFSUEHbLiJhzHbZOa"><td data-page-node-id="1QujnBT9hM44Byuull38zA">自动发现</td><td data-page-node-id="5I1a22t6Ro1ck2okQWqvW7">扫描目录或嵌套输出时，由程序判断哪些文件入队。</td></tr>
+            <tr data-page-node-id="N4eKhBcstF2Ex9IBQmFdnS"><td data-page-node-id="okPOoXvtTJhm67ExBjrupU">外层文件</td><td data-page-node-id="PFk7KXDEu4pxSksfHZidwl">可能包含内嵌压缩包的文件，如 JPEG、MP4、MKV。</td></tr>
+            <tr data-page-node-id="gkz9BecOnn5lJCDaeRWRsU"><td data-page-node-id="1mbXF1P6kq8cmv1mOJ1erW">候选</td><td data-page-node-id="Ra8dVCewzYYSauFuwkhDiJ">程序在外层文件中找到的一段可能属于压缩包的数据。</td></tr>
+            <tr data-page-node-id="LX7H6JYaL7FKWvJzwosWbt"><td data-page-node-id="HDtEsjiruc80c0GvYLGfHa">完整校验</td><td data-page-node-id="3qXv6wSCz0NhMdVUPCpPKW">7-Zip 读清单和解压都无警告；文件、目录、数量和已知大小一致，无输出上限或路径安全问题。</td></tr>
+            <tr data-page-node-id="CKeSu56ygwhagctcLC6DQT"><td data-page-node-id="1U5NH1Y0si1ES9TuR9WMTX">清理源文件</td><td data-page-node-id="xH5suMGND6dZ9L2jEpmmS4">确认输出完整成功后，按任务策略保留、回收或永久删除源压缩包。</td></tr>
+          </tbody>
+        </table>
+        <p class="small" data-page-node-id="lFGHebGeRnEx8gdM4OiDPH">仓库的 <code data-page-node-id="DkDINULzmAqmb38ePgqqCN">README.md</code> 是阅读入口；程序模块、配置项、测试与发布检查已集中到 <code>docs/MAINTENANCE.md</code>，版本变更见 <code data-page-node-id="aCBnrg6po6ktZ0SHHgHJmq">CHANGELOG.md</code>。这些是仓库路径，安装版或便携版不一定附带维护文档。</p>
+        <p class="small">截至 2026-09-10，1.0.3 已发布，新的启动测量仍在进行。工作树文档修改不会自动更新已发布包中的手册副本；本次整理不代表冷启动优化已得到验证。</p>
+        <a class="toplink" href="#top" data-page-node-id="KuF5UOlm82lbAHbVK0TuRK">返回顶部</a>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
