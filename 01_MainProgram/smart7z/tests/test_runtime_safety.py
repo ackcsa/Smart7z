@@ -693,6 +693,9 @@ class TestStegoSelectionScheduling(unittest.TestCase):
                         confidence=Confidence.HIGH,
                     )
                 ]
+                self.assertTrue(scheduler.submit(job))
+                self.assertIs(scheduler.task_queue.get_nowait(), job)
+                scheduler.task_queue.task_done()
                 scheduler.stego_pending[job.task_id] = job
                 with mock.patch.object(
                     scheduler.executor,
@@ -702,6 +705,7 @@ class TestStegoSelectionScheduling(unittest.TestCase):
                     scheduler.submit_stego_selection(job, 0)
                 self.assertTrue(job.stego_selection_pending)
                 self.assertIs(scheduler.task_queue.get_nowait(), job)
+                scheduler.task_queue.task_done()
             finally:
                 scheduler.stop()
 

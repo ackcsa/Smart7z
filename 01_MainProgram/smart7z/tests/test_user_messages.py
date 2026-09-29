@@ -30,6 +30,8 @@ class ManualContent(HTMLParser):
         self.text = []
         self.codes = []
         self.anchors = set()
+        self.links = []
+        self.images = []
         self._code = None
         self._hidden = 0
         self.feed(source)
@@ -42,6 +44,10 @@ class ManualContent(HTMLParser):
         attributes = dict(attrs)
         if "id" in attributes:
             self.anchors.add(attributes["id"])
+        if tag == "a" and "href" in attributes:
+            self.links.append(attributes["href"])
+        if tag == "img":
+            self.images.append(attributes)
         if tag == "code":
             self._code = []
 
@@ -60,6 +66,44 @@ class ManualContent(HTMLParser):
 
 
 class TestUserMessageCatalog(unittest.TestCase):
+    def test_manual_internal_links_and_offline_preview(self):
+        content = ManualContent(MANUAL_PATH.read_text(encoding="utf-8"))
+        for link in content.links:
+            if link.startswith("#"):
+                with self.subTest(link=link):
+                    self.assertIn(link[1:], content.anchors)
+        self.assertTrue(content.images)
+        for image in content.images:
+            self.assertTrue(image["src"].startswith("data:image/png;base64,"))
+            self.assertTrue(image.get("alt"))
+            self.assertGreater(int(image["width"]), 0)
+            self.assertGreater(int(image["height"]), 0)
+
+    def test_manual_palette_matches_qt_semantic_colors(self):
+        names = {
+            "COLOR_ACCENT": "--accent",
+            "COLOR_ACCENT_HOVER": "--accent-hover",
+            "COLOR_ACCENT_SOFT": "--soft",
+            "COLOR_TEXT": "--ink",
+            "COLOR_MUTED": "--muted",
+            "COLOR_BORDER": "--line",
+            "COLOR_PROCESSING": "--accent-2",
+            "COLOR_SUCCESS": "--ok",
+            "COLOR_WARNING": "--warn",
+            "COLOR_DANGER": "--danger",
+        }
+        manual = MANUAL_PATH.read_text(encoding="utf-8").lower()
+        matched = set()
+        for node in ast.parse(UI_PATH.read_text(encoding="utf-8")).body:
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id in names:
+                    color = ast.literal_eval(node.value.args[0]).lower()
+                    self.assertIn(f"{names[target.id]}: {color};", manual)
+                    matched.add(target.id)
+        self.assertEqual(matched, set(names))
+
     def test_manual_parser_checks_visible_content_despite_editor_attributes(self):
         content = ManualContent(
             '<section id="s" data-page-node-id="x">'

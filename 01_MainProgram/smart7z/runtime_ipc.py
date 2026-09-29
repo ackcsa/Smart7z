@@ -25,11 +25,11 @@ from launch_ipc import (
     IPC_MAX_BYTES,
     IPC_MAX_PATHS,
     IPC_PORT,
-    IPC_STATE_MAX_BYTES,
     IPC_VERSION,
     _forward_launch_request,
     _ipc_state_path,
     _normalize_ipc_path,
+    _read_ipc_state,
     forward_to_existing,
     parse_launch_args,
     try_forward_to_existing,
@@ -97,27 +97,6 @@ CONTEXT_AUTO_CLOSE_GRACE_MS = 1500
 SCAN_MODE_DEEP = "deep"
 SCAN_MODE_STEGANOGRAPHIER = "steganographier"
 SCAN_MODE_NORMAL = "normal"
-
-def _read_ipc_state(path: Optional[str] = None) -> Optional[dict]:
-    state_path = path or _ipc_state_path()
-    try:
-        with open(state_path, "rb") as stream:
-            raw = stream.read(IPC_STATE_MAX_BYTES + 1)
-        if len(raw) > IPC_STATE_MAX_BYTES:
-            return None
-        state = json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(state, dict) or state.get("version") != IPC_VERSION:
-        return None
-    token = state.get("token")
-    port = state.get("port")
-    if not isinstance(token, str) or not 32 <= len(token) <= 256:
-        return None
-    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
-        return None
-    return state
-
 
 class _IPCDispatchTicket:
     """Make timeout cancellation atomic with UI-thread dispatch start."""
@@ -284,7 +263,11 @@ class BoundedIPCServer:
                     if data is None:
                         self._send_reply(conn, False, "invalid_frame")
                         continue
-                    request = self._parse_request(data)
+                    try:
+                        request = self._parse_request(data)
+                    except (TypeError, ValueError, RecursionError):
+                        logger.warning("Invalid IPC request could not be parsed")
+                        request = None
                     if request is None:
                         self._send_reply(conn, False, "invalid_paths")
                         continue
@@ -401,17 +384,19 @@ class BoundedIPCServer:
     def _parse_request(self, data):
         try:
             payload = json.loads(data.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, ValueError, RecursionError):
             return None
         if not isinstance(payload, dict) or payload.get("version") != IPC_VERSION:
             return None
         supplied_token = payload.get("token")
-        if not isinstance(supplied_token, str) or not hmac.compare_digest(
-            supplied_token, self.token
+        if (
+            not isinstance(supplied_token, str)
+            or not supplied_token.isascii()
+            or not hmac.compare_digest(supplied_token, self.token)
         ):
             return None
         action = payload.get("action", "enqueue")
-        if action not in {"enqueue", "activate"}:
+        if not isinstance(action, str) or action not in {"enqueue", "activate"}:
             return None
         raw_paths = payload.get("paths", [])
         auto_start = payload.get("auto_start")
@@ -485,7 +470,8 @@ class BoundedIPCServer:
                     self._thread = None
                 self._connections.clear()
                 self._tickets.clear()
-            state = _read_ipc_state(self.state_path)
+            # Removal is authorized by our token, not by the discovery PID.
+            state = _read_ipc_state(self.state_path, require_pid=False)
             if state is not None and hmac.compare_digest(state["token"], self.token):
                 try:
                     os.unlink(self.state_path)

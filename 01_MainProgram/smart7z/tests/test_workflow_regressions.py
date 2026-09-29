@@ -186,6 +186,77 @@ class TestWorkflowRegressions(unittest.TestCase):
     def test_queued_keep_survives_switch_to_permanent(self):
         self._cleanup_policy_workflow("keep", "permanent", active=False)
 
+    def test_discarded_waiting_jobs_do_not_accumulate_markers(self):
+        scheduler = self._scheduler()
+        source = self.root / "queued.zip"
+        source.write_bytes(self._zip_bytes("queued.txt", b"retained source\n"))
+        original = source.read_bytes()
+        for mode in ("queued", "deferred", "password", "candidate"):
+            for iteration in range(10):
+                with self.subTest(mode=mode, iteration=iteration):
+                    if mode == "deferred":
+                        scheduler.pause_intake()
+                    job = Job(path=str(source))
+                    self.assertTrue(scheduler.submit(job))
+                    if mode in ("password", "candidate"):
+                        self.assertIs(scheduler.task_queue.get_nowait(), job)
+                        scheduler.task_queue.task_done()
+                        pending = (
+                            scheduler.password_pending if mode == "password"
+                            else scheduler.stego_pending
+                        )
+                        pending[job.task_id] = job
+                    self.assertEqual(scheduler.discard_jobs({job.task_id}), [job.task_id])
+                    scheduler.resume_intake()
+                    self.assertFalse(scheduler._discard_requested)
+                    self.assertFalse(scheduler.has_unfinished_jobs())
+                    self.assertEqual(scheduler.task_queue.unfinished_tasks, 0)
+        self.assertEqual(source.read_bytes(), original)
+
+    def test_discard_during_candidate_response_does_not_resubmit_removed_job(self):
+        scheduler = self._scheduler()
+        source = self.root / "candidate.zip"
+        source.write_bytes(self._zip_bytes("candidate.txt", b"source retained\n"))
+        job = Job(path=str(source))
+        self.assertTrue(scheduler.submit(job))
+        self.assertIs(scheduler.task_queue.get_nowait(), job)
+        scheduler.task_queue.task_done()
+        scheduler.stego_pending[job.task_id] = job
+        reached = threading.Event()
+        release = threading.Event()
+        errors = []
+
+        class GatedCandidates(list):
+            def __len__(self):
+                reached.set()
+                if not release.wait(WAIT_SECONDS):
+                    raise TimeoutError("Candidate response gate timed out")
+                return super().__len__()
+
+        job.stego_candidates = GatedCandidates([object()])
+
+        def respond():
+            try:
+                scheduler.submit_stego_selection(job, 0)
+            except Exception as error:
+                errors.append(error)
+
+        worker = threading.Thread(target=respond)
+        worker.start()
+        try:
+            self.assertTrue(reached.wait(WAIT_SECONDS))
+            self.assertEqual(scheduler.discard_jobs({job.task_id}), [job.task_id])
+        finally:
+            release.set()
+            worker.join(WAIT_SECONDS)
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(errors)
+        self.assertFalse(scheduler.has_job(job.task_id))
+        self.assertEqual(scheduler.queue_size(), 0)
+        self.assertFalse(scheduler._discard_requested)
+        self.assertNotIn(("job_resubmitted", job.task_id), self._event_snapshot())
+        self.assertTrue(source.exists())
+
     def test_queued_permanent_survives_switch_to_keep(self):
         self._cleanup_policy_workflow("permanent", "keep", active=False)
 
@@ -478,6 +549,7 @@ class TestWorkflowRegressions(unittest.TestCase):
                 self.assertIn(("job_complete", parent.task_id), events)
         self.assertFalse(live_closed_batches)
         self.assertFalse(live_discarded_batches)
+        self.assertFalse(scheduler._discard_requested)
 
     def test_nested_fixture_really_extracts_child_without_discard(self):
         self._nested_workflow()

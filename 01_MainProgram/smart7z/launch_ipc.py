@@ -193,7 +193,8 @@ def _instance_mutex_exists(name: str = INSTANCE_MUTEX_NAME):
     return None
 
 
-def _read_ipc_state(path=None):
+def _read_ipc_state(path=None, *, require_pid=True):
+    """Read bounded discovery state; owner cleanup can tolerate a missing PID."""
     state_path = path or _ipc_state_path()
     try:
         with open(state_path, "rb") as stream:
@@ -203,18 +204,20 @@ def _read_ipc_state(path=None):
         import json
 
         state = json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
+    except (OSError, UnicodeDecodeError, ValueError, RecursionError):
         return None
     if not isinstance(state, dict) or state.get("version") != IPC_VERSION:
         return None
     token = state.get("token")
     port = state.get("port")
     pid = state.get("pid")
-    if not isinstance(token, str) or not 32 <= len(token) <= 256:
+    if not isinstance(token, str) or not token.isascii() or not 32 <= len(token) <= 256:
         return None
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
         return None
-    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+    if require_pid and (
+        not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0
+    ):
         return None
     return state
 

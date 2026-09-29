@@ -24,7 +24,7 @@ SUITES = {
     "candidates": ("test_candidate_triage.py", "test_runtime_safety.py"),
     "ui": ("test_*qt*.py", "test_ui_runtime.py"),
     "integration": ("test_integration_real7z.py", "test_workflow_regressions.py"),
-    "release": ("test_release_build.py", "test_user_messages.py", "test_automation.py"),
+    "release": ("test_release_build.py", "test_installer_upgrade.py", "test_user_messages.py", "test_automation.py"),
 }
 
 

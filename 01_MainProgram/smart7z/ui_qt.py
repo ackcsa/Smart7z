@@ -168,7 +168,7 @@ _startup_trace("ui_import:application:end")
 logger = logging.getLogger(__name__)
 
 APP_TITLE = "Smart 7z Ultra"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 
 _ICON_FONT_FAMILY: Optional[str] = None
 
@@ -1236,6 +1236,7 @@ class Smart7zQtWindow(QMainWindow):
         self._close_confirmation_pending = False
         self._shutdown_complete = False
         self._processing_requested = False
+        self._auto_start_pending = False
 
         self.startup_args = list(startup_args or ())
         self.startup_auto_start = bool(startup_auto_start)
@@ -2140,6 +2141,7 @@ class Smart7zQtWindow(QMainWindow):
         _startup_trace("run_app:scheduler_ready")
         pending, self._pending_startup_jobs = self._pending_startup_jobs, []
         accepted_keys = set()
+        start_requested = False
         for job, auto_start in pending:
             if job.task_id not in self.jobs:
                 continue
@@ -2149,11 +2151,14 @@ class Smart7zQtWindow(QMainWindow):
                 _classify, _child, logical_key = _resolve_scan_helpers()
                 accepted_keys.add(logical_key(job.original_path or job.path))
                 if auto_start:
-                    self.scheduler.enable_processing()
+                    start_requested = True
         self.seen_paths.update(accepted_keys)
         if self._pending_scan_requests and not self._scan_active:
             roots, auto_start, snapshot = self._pending_scan_requests.pop(0)
             self._launch_scan(roots, auto_start, snapshot)
+        if start_requested:
+            self._auto_start_pending = True
+        self._start_pending_batch()
         self._update_summary()
         _flush_startup_trace()
         threading.Thread(
@@ -2345,20 +2350,27 @@ class Smart7zQtWindow(QMainWindow):
         config_snapshot["del_archive"] = cleanup_policy == CleanupPolicy.PERMANENT.value
         config_snapshot["_extract_to_source_override"] = bool(extract_to_source)
         accepted = False
+        roots = []
         for raw_path in paths:
             if not isinstance(raw_path, str):
                 continue
             path = os.path.normpath(raw_path)
             if os.path.isdir(path):
-                accepted = self._start_scan([path], auto_start=auto_start, config_snapshot=config_snapshot) or accepted
+                roots.append(path)
             elif os.path.isfile(path):
                 accepted = self._enqueue_path(
                     path,
-                    auto_start=auto_start,
+                    auto_start=auto_start and self.scheduler is None,
                     explicit_input=True,
                     config_snapshot=config_snapshot,
                 ) or accepted
+        if roots:
+            accepted = self._start_scan(
+                roots, auto_start=auto_start, config_snapshot=config_snapshot
+            ) or accepted
         if accepted:
+            if auto_start:
+                self._request_auto_start()
             _startup_trace("external_paths:accepted")
             file_count = sum(
                 1 for p in paths if isinstance(p, str) and os.path.isfile(p)
@@ -2990,8 +3002,7 @@ class Smart7zQtWindow(QMainWindow):
         _startup_trace(f"enqueue:accepted:{job.task_id}:auto={auto_start}")
         self.seen_paths.add(logical_key)
         if auto_start:
-            self.scheduler.enable_processing()
-            self._processing_requested = True
+            self._request_auto_start()
         self._update_summary()
         return True
 
@@ -3179,15 +3190,15 @@ class Smart7zQtWindow(QMainWindow):
             self.log_event("SCAN_FAILED", count=found, detail=failure)
         else:
             self.log_event("SCAN_COMPLETE", count=found)
-        if getattr(self, "_scan_auto_start", False) and self.scheduler is not None:
-            self.scheduler.enable_processing()
-            self._processing_requested = True
+        if getattr(self, "_scan_auto_start", False):
+            self._auto_start_pending = True
         self._sync_activity_visibility()
         self._update_summary()
         if self._pending_scan_requests and not self._closing:
             roots, auto_start, config_snapshot = self._pending_scan_requests.pop(0)
             self._launch_scan(roots, auto_start, config_snapshot)
         else:
+            self._start_pending_batch()
             self._schedule_context_auto_close_check()
 
     def _scan_mode_label(self) -> str:
@@ -3212,6 +3223,7 @@ class Smart7zQtWindow(QMainWindow):
         self._scan_generation += 1
         self._scan_active = False
         self._scan_auto_start = False
+        self._auto_start_pending = False
         self._scan_config_snapshot = None
         if self._scan_thread is not None and self._scan_thread.is_alive():
             self._retired_scan_threads.append(self._scan_thread)
@@ -3220,6 +3232,25 @@ class Smart7zQtWindow(QMainWindow):
         self._append_log_line("扫描已取消，未接纳的扫描结果已丢弃")
         self._sync_activity_visibility()
         self._update_summary()
+
+    def _request_auto_start(self) -> None:
+        if self.scheduler is None:
+            return
+        self._auto_start_pending = True
+        self._start_pending_batch()
+
+    def _start_pending_batch(self) -> None:
+        if (
+            not self._auto_start_pending
+            or self._closing
+            or self.scheduler is None
+            or self._scan_active
+            or self._pending_scan_requests
+        ):
+            return
+        self._auto_start_pending = False
+        self.scheduler.enable_processing()
+        self._processing_requested = True
 
     def _toggle_processing(self) -> None:
         if self._processing_requested:
@@ -3236,6 +3267,7 @@ class Smart7zQtWindow(QMainWindow):
                 self._setup_scheduler(background=True)
             return
         self.scheduler.resume_intake()
+        self._auto_start_pending = False
         self.scheduler.enable_processing()
         self._processing_requested = True
         self.status_state.setText("●  正在处理")
@@ -3243,6 +3275,7 @@ class Smart7zQtWindow(QMainWindow):
         self._update_summary()
 
     def _pause_processing(self) -> None:
+        self._auto_start_pending = False
         if self.scheduler is not None:
             self.scheduler.disable_processing()
         self._processing_requested = False

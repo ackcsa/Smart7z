@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 import threading
+import time
 import unittest
 import zipfile
 from contextlib import contextmanager
@@ -195,6 +197,206 @@ class TestQtHighRiskBehaviors(unittest.TestCase):
                     )
 
             self.assertEqual(save.call_count, 3)
+
+    def test_external_files_are_all_received_before_auto_start(self):
+        with tempfile.TemporaryDirectory() as temp, self.make_window() as window:
+            paths = []
+            for name, size in (("large.zip", 100), ("small.zip", 1)):
+                path = Path(temp) / name
+                path.write_bytes(b"x" * size)
+                paths.append(str(path))
+            batches = []
+
+            def observe_start():
+                batches.append([job.path for job in window.scheduler.submitted_jobs])
+                window.scheduler.processing_enabled.set()
+
+            with mock.patch.object(window.scheduler, "enable_processing", side_effect=observe_start):
+                self.assertTrue(window.process_ipc_args(paths, context_menu=True))
+            self.assertEqual(batches, [paths])
+
+    def test_external_directories_share_one_scan_before_auto_start(self):
+        with tempfile.TemporaryDirectory() as temp, self.make_window() as window:
+            roots = [Path(temp) / "first", Path(temp) / "second"]
+            for root in roots:
+                root.mkdir()
+            with mock.patch.object(window, "_start_scan", return_value=True) as scan:
+                self.assertTrue(window.process_ipc_args(
+                    [str(root) for root in roots], context_menu=True
+                ))
+            self.assertEqual(scan.call_count, 1)
+            self.assertEqual(scan.call_args.args[0], [str(root) for root in roots])
+            self.assertTrue(scan.call_args.kwargs["auto_start"])
+
+    def test_startup_files_are_all_submitted_before_auto_start(self):
+        from runtime_startup import SchedulerStartupResult
+
+        with tempfile.TemporaryDirectory() as temp, self.make_window(defer_scheduler=True) as window:
+            window._startup_pending = True
+            paths = []
+            for name in ("large.zip", "small.zip"):
+                path = Path(temp) / name
+                path.write_bytes(b"fixture")
+                paths.append(str(path))
+            self.assertTrue(window.process_ipc_args(paths, context_menu=True))
+            config = {**window.config, "7z_path": r"C:\7z.exe"}
+            scheduler = _BehaviorScheduler(config["7z_path"], config, window._scheduler_callback)
+            batches = []
+            with mock.patch.object(scheduler, "enable_processing", side_effect=lambda: batches.append(
+                [job.path for job in scheduler.submitted_jobs]
+            )):
+                self.assertTrue(window._install_startup_scheduler(SchedulerStartupResult(scheduler, config)))
+            self.assertEqual(batches, [paths])
+            self.assertFalse(window._auto_start_pending)
+
+    def test_cancelled_startup_request_does_not_auto_start_later_manual_input(self):
+        from runtime_startup import SchedulerStartupResult
+
+        with tempfile.TemporaryDirectory() as temp, self.make_window(defer_scheduler=True) as window:
+            window._startup_pending = True
+            source = Path(temp) / "queued.zip"
+            source.write_bytes(b"fixture")
+            self.assertTrue(window.process_ipc_args([str(source)], context_menu=True))
+            removed = list(window.jobs.values())
+            with mock.patch.object(window, "_selected_jobs", return_value=removed):
+                window._cancel_selected()
+            self.assertTrue(window._enqueue_path(str(source), auto_start=False))
+            config = {**window.config, "7z_path": r"C:\7z.exe"}
+            scheduler = _BehaviorScheduler(config["7z_path"], config, window._scheduler_callback)
+            with mock.patch.object(scheduler, "enable_processing") as start:
+                self.assertTrue(window._install_startup_scheduler(SchedulerStartupResult(scheduler, config)))
+                start.assert_not_called()
+            self.assertEqual(len(scheduler.submitted_jobs), 1)
+
+    def test_pending_scans_delay_external_file_start_and_cancel_disarms_it(self):
+        for cancel in (False, True):
+            with self.subTest(cancel=cancel), tempfile.TemporaryDirectory() as temp, self.make_window() as window:
+                source = Path(temp) / "large.zip"
+                source.write_bytes(b"fixture")
+                next_root = Path(temp) / "next"
+                next_root.mkdir()
+                window._scan_active = True
+                window._scan_auto_start = False
+                window._pending_scan_requests.append(([str(next_root)], False, dict(window.config)))
+                with mock.patch.object(window.scheduler, "enable_processing") as start:
+                    self.assertTrue(window.process_ipc_args([str(source)], context_menu=True))
+                    start.assert_not_called()
+                    if cancel:
+                        window._cancel_scan()
+                        window._start_pending_batch()
+                        self.assertFalse(window._auto_start_pending)
+                        start.assert_not_called()
+                    else:
+                        with mock.patch.object(window, "_launch_scan") as scan:
+                            window._finish_scan(0, "", window._scan_generation)
+                        scan.assert_called_once()
+                        start.assert_not_called()
+                        window._scan_active = True
+                        window._finish_scan(0, "", window._scan_generation)
+                        start.assert_called_once()
+
+    def test_real_extraction_order_matches_across_intake_routes(self):
+        from config import find_sevenzip
+        from runtime_startup import SchedulerStartupResult
+        from scheduler import Scheduler
+
+        sevenzip = find_sevenzip(DEFAULT_CONFIG)
+        self.assertTrue(sevenzip, "Intake ordering verification requires real 7-Zip")
+        for route in ("ipc_files", "cli_files", "ipc_directories", "gui_scan", "startup_mixed"):
+            with self.subTest(route=route), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                large_dir, small_dir = root / "large-input", root / "small-input"
+                large_dir.mkdir()
+                small_dir.mkdir()
+                sources = [large_dir / "large.zip", small_dir / "small.zip"]
+                contents = [b"large payload\n" * 1024, b"small payload\n"]
+                hashes = {}
+                for source, content in zip(sources, contents):
+                    with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_STORED) as archive:
+                        archive.writestr(source.stem + ".txt", content)
+                    hashes[source] = hashlib.sha256(source.read_bytes()).hexdigest()
+                config = {
+                    "7z_path": sevenzip,
+                    "temp_dir": str(root / "staging"),
+                    "target_dir": str(root / "output"),
+                    "password_file": str(root / "code.txt"),
+                    "_recovery_journal_path": str(root / "recovery.json"),
+                    "extract_to_source": False,
+                    "steganographier_compat_mode": False,
+                    "wait_disk_space": False,
+                }
+                startup = route == "startup_mixed"
+                with self.make_window(config, defer_scheduler=startup) as window, mock.patch.object(ui_qt, "save_config"):
+                    effective = {**window.config, "7z_path": sevenzip}
+                    scheduler = Scheduler(sevenzip, effective, event_cb=window._scheduler_callback)
+                    order = []
+                    real_execute = scheduler.executor.execute
+
+                    def record_execution(job, **kwargs):
+                        order.append(Path(job.path).name)
+                        return real_execute(job, **kwargs)
+
+                    with mock.patch.object(scheduler.executor, "execute", side_effect=record_execution):
+                        try:
+                            if startup:
+                                window._startup_pending = True
+                                self.assertTrue(window.process_ipc_args(
+                                    [str(sources[0]), str(small_dir)], context_menu=True
+                                ))
+                                self.assertTrue(window._install_startup_scheduler(
+                                    SchedulerStartupResult(scheduler, effective)
+                                ))
+                            else:
+                                window.scheduler = scheduler
+                                scheduler.start()
+                                if route == "ipc_directories":
+                                    self.assertTrue(window.process_ipc_args(
+                                        [str(large_dir), str(small_dir)], context_menu=True
+                                    ))
+                                elif route == "gui_scan":
+                                    self.assertTrue(window._start_scan(
+                                        [str(large_dir), str(small_dir)], auto_start=False
+                                    ))
+                                elif route == "cli_files":
+                                    window.startup_args = [str(source) for source in sources]
+                                    window._startup_args_processed = False
+                                    window._process_startup_args()
+                                else:
+                                    self.assertTrue(window.process_ipc_args(
+                                        [str(source) for source in sources], context_menu=True
+                                    ))
+                            deadline = time.monotonic() + 20
+                            manual_started = False
+                            while time.monotonic() < deadline:
+                                self.qt_app.processEvents()
+                                if route == "gui_scan" and not window._scan_active and not manual_started:
+                                    window._start_processing()
+                                    manual_started = True
+                                if (
+                                    len(window.jobs) == 2
+                                    and not scheduler.has_unfinished_jobs()
+                                    and not window._scan_active
+                                ):
+                                    break
+                                QTest.qWait(10)
+                            self.assertEqual(order, ["small.zip", "large.zip"])
+                            self.assertEqual(len(window.jobs), 2)
+                            for job in window.jobs.values():
+                                self.assertEqual(job.state, JobState.COMPLETE)
+                                self.assertTrue(job.commit_verified)
+                                expected = contents[sources.index(Path(job.original_path))]
+                                files = [record for record in job.commit_records if record.expected_size >= 0]
+                                self.assertEqual(len(files), 1)
+                                self.assertEqual(
+                                    hashlib.sha256(Path(files[0].destination).read_bytes()).digest(),
+                                    hashlib.sha256(expected).digest(),
+                                )
+                                self.assertEqual(
+                                    hashlib.sha256(Path(job.original_path).read_bytes()).hexdigest(),
+                                    hashes[Path(job.original_path)],
+                                )
+                        finally:
+                            self.assertTrue(scheduler.stop())
 
     def test_settings_dialog_round_trips_wait_for_disk_space(self):
         with self.make_window({"wait_disk_space": False}) as window:

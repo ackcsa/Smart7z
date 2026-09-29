@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -19,6 +21,161 @@ import windows_adapters
 
 
 class TestIpcLifecycle(unittest.TestCase):
+    def test_state_readers_share_bounded_validation(self):
+        valid = {
+            "version": launch_ipc.IPC_VERSION,
+            "port": 59777,
+            "pid": 123,
+            "token": "x" * 43,
+        }
+        invalid_states = [
+            [],
+            {**valid, "version": 2},
+            {**valid, "port": True},
+            {**valid, "port": 0},
+            {**valid, "port": 65536},
+            {**valid, "port": "59777"},
+            {**valid, "token": []},
+            {**valid, "token": "x" * 31},
+            {**valid, "token": "x" * 257},
+            {**valid, "token": "\u4e2d" * 43},
+        ]
+        invalid_bytes = [
+            b"",
+            b"\xff",
+            b"{",
+            b"[" * 1500 + b"0" + b"]" * 1500,
+            b" " * (launch_ipc.IPC_STATE_MAX_BYTES + 1),
+            *(json.dumps(state).encode() for state in invalid_states),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            state_path = Path(temp) / "ipc-state.json"
+            for reader in (launch_ipc._read_ipc_state, runtime_ipc._read_ipc_state):
+                with self.subTest(reader=reader.__module__):
+                    self.assertIsNone(reader(str(state_path)))
+                    state_path.write_text(json.dumps(valid), encoding="utf-8")
+                    self.assertEqual(reader(str(state_path)), valid)
+                    for raw in invalid_bytes:
+                        with self.subTest(raw=raw[:60]):
+                            state_path.write_bytes(raw)
+                            self.assertIsNone(reader(str(state_path)))
+                    state_path.unlink()
+
+    def test_pid_requirement_is_explicit_for_state_cleanup(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_path = Path(temp) / "ipc-state.json"
+            for pid in (None, False, 0, -1, "123", 1.5):
+                state = {
+                    "version": launch_ipc.IPC_VERSION,
+                    "port": 59777,
+                    "token": "x" * 43,
+                }
+                if pid is not None:
+                    state["pid"] = pid
+                with self.subTest(pid=pid):
+                    state_path.write_text(json.dumps(state), encoding="utf-8")
+                    self.assertIsNone(launch_ipc._read_ipc_state(str(state_path)))
+                    self.assertEqual(
+                        launch_ipc._read_ipc_state(str(state_path), require_pid=False),
+                        state,
+                    )
+
+    def test_state_decoder_recursion_error_is_rejected(self):
+        with (
+            mock.patch("builtins.open", mock.mock_open(read_data=b"[]")),
+            mock.patch.object(json, "loads", side_effect=RecursionError),
+        ):
+            self.assertIsNone(launch_ipc._read_ipc_state("unused"))
+            self.assertIsNone(runtime_ipc._read_ipc_state("unused", require_pid=False))
+
+    def test_shutdown_removes_only_readable_owned_state_even_without_pid(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state_path = Path(temp) / "ipc-state.json"
+            server = runtime_ipc.BoundedIPCServer(
+                types.SimpleNamespace(), state_path=str(state_path), token="x" * 43
+            )
+            for token, retained in (
+                (server.token, False),
+                ("y" * 43, True),
+                ("\u4e2d" * 43, True),
+            ):
+                with self.subTest(token=token):
+                    state_path.write_text(
+                        json.dumps({
+                            "version": launch_ipc.IPC_VERSION,
+                            "port": 59777,
+                            "token": token,
+                        }),
+                        encoding="utf-8",
+                    )
+                    self.assertTrue(server.close())
+                    self.assertEqual(state_path.exists(), retained)
+            state_path.write_bytes(b"[" * 1500 + b"0" + b"]" * 1500)
+            self.assertTrue(server.close())
+            self.assertTrue(state_path.exists())
+
+    def test_lightweight_launch_import_does_not_load_runtime_or_qt(self):
+        probe = subprocess.run(
+            [
+                sys.executable, "-B", "-c",
+                "import sys, launch_ipc; "
+                "assert 'runtime_ipc' not in sys.modules; "
+                "assert not any(name.startswith('PySide6') for name in sys.modules)",
+            ],
+            cwd=str(Path(launch_ipc.__file__).parent),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(probe.returncode, 0, probe.stderr)
+
+    def test_malformed_requests_do_not_stop_listener(self):
+        class App:
+            @staticmethod
+            def _post_to_ui(callback, *args):
+                callback(*args)
+                return True
+
+            @staticmethod
+            def activate_window():
+                return True
+
+        with tempfile.TemporaryDirectory() as temp:
+            server = runtime_ipc.BoundedIPCServer(
+                App(), state_path=str(Path(temp) / "ipc-state.json")
+            )
+            try:
+                self.assertTrue(server.start())
+                valid = {
+                    "version": runtime_ipc.IPC_VERSION,
+                    "token": server.token,
+                    "action": "activate",
+                    "paths": [],
+                    "auto_start": False,
+                }
+                malformed = [
+                    json.dumps({**valid, "token": "\u4e2d" * 43}).encode(),
+                    json.dumps({**valid, "action": []}).encode(),
+                    json.dumps({**valid, "action": {}}).encode(),
+                    b"[" * 2000 + b"0" + b"]" * 2000,
+                ]
+                for payload in malformed:
+                    with self.subTest(payload=payload[:60]):
+                        with socket.create_connection(("127.0.0.1", server.port), timeout=2) as connection:
+                            connection.sendall(struct.pack("!I", len(payload)) + payload)
+                            header = launch_ipc._recv_exact(connection, 4)
+                            self.assertIsNotNone(header)
+                            length = struct.unpack("!I", header)[0]
+                            reply = json.loads(launch_ipc._recv_exact(connection, length))
+                            self.assertFalse(reply["accepted"])
+                        self.assertTrue(server._thread.is_alive())
+                        result = runtime_ipc.forward_to_existing(
+                            [], port=server.port, token=server.token, auto_start=False
+                        )
+                        self.assertTrue(result.accepted, result.reason)
+            finally:
+                self.assertTrue(server.close())
+
     def test_all_distribution_copies_share_the_published_ipc_endpoint(self):
         received = []
 

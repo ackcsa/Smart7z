@@ -355,7 +355,11 @@ class Scheduler:
             return
         if 0 <= candidate_index < len(target.stego_candidates):
             with self._lock:
-                if target.task_id in self._terminal_ids or target.task_id in self._discard_requested:
+                if (
+                    self._jobs.get(target.task_id) is not target
+                    or target.task_id in self._terminal_ids
+                    or target.task_id in self._discard_requested
+                ):
                     return
                 target.selected_candidate = target.stego_candidates[candidate_index]
                 target.stego_selection_pending = True
@@ -461,7 +465,6 @@ class Scheduler:
                 and (task_ids is None or task_id in task_ids)
             }
             removed_jobs = [self._jobs[task_id] for task_id in selected]
-            self._discard_requested.update(selected)
             if discard_current:
                 self._discard_requested.add(current_id)
                 self.cancel_event.set()
@@ -641,7 +644,10 @@ class Scheduler:
 
             newly_interrupted = False
             with self._lock:
-                if job.task_id in self._discard_requested:
+                if (
+                    self._jobs.get(job.task_id) is not job
+                    or job.task_id in self._discard_requested
+                ):
                     self._discard_requested.discard(job.task_id)
                     should_execute = False
                 elif job.task_id in self._terminal_ids:

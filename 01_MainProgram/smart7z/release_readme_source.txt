@@ -30,6 +30,8 @@ Smart7z __VERSION__ 源码版
 摘要和日志写入 .verification，可用 --report-dir 指定目录。
 --reuse 只复用 24 小时内输入、环境和测试选择一致的成功结果；测试数量以当前报告为准。
 Qt 测试需要 PySide6，真实解压需要 7-Zip，发布测试需要 Windows PowerShell。
+安装器编译与隔离逻辑测试还需 Inno Setup；可通过 INNO_SETUP_COMPILER 指定 ISCC.exe。
+逻辑测试不修改真实安装登记，不能替代实际安装、升级和卸载验收。
 
 构建
 ----

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(?:\.\d+)?$')]
-    [string]$Version = '1.0.4',
+    [string]$Version = '1.0.5',
 
     [string]$PythonExe = '',
 

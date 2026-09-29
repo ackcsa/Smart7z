@@ -153,8 +153,9 @@ class TestSmart7zSpecQtBoundary(unittest.TestCase):
     def test_installer_only_removes_menus_owned_by_this_installation(self):
         installer = INSTALLER_SCRIPT_PATH.read_text(encoding="utf-8")
         self.assertIn("function IsOwnedContextMenuCommand", installer)
-        self.assertIn("CompareText(Executable, ExpandConstant('{app}\\{#MyAppExeName}')) = 0", installer)
-        self.assertIn("CompareText(Executable, ExpandConstant('{app}\\Smart7zShell.exe')) = 0", installer)
+        self.assertIn("IsCommandFromDirectory(Command, ExpandConstant('{app}'))", installer)
+        self.assertIn("CompareText(Executable, AddBackslash(Directory) + '{#MyAppExeName}') = 0", installer)
+        self.assertIn("CompareText(Executable, AddBackslash(Directory) + 'Smart7zShell.exe') = 0", installer)
         self.assertNotIn("Pos(Lowercase(MainExecutable)", installer)
         removal = installer.split("procedure RemoveOwnedContextMenuKey", 1)[1].split("procedure RemoveContextMenuKeys", 1)[0]
         self.assertIn("RegQueryStringValue(HKCU, KeyPath + '\\command'", removal)
