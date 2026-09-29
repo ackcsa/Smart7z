@@ -1,4 +1,4 @@
-# Smart7z
+# Smart7z 更完善的7z智能解压
 
 by **Kurpphy** · [GPLv3](LICENSE)
 
