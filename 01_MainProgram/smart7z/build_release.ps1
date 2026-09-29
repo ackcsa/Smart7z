@@ -1121,12 +1121,12 @@ foreach ($required in @($SevenZipExe, $SevenZipDll, $SevenZipLicense)) {
 }
 
 Write-Host 'Assembling shared application files...'
-$SevenZipSourceArchive = Join-Path $SourceDir '.license-cache\7z2602-src.tar.xz'
-$SevenZipSourceHash = 'CF967C98BCA02A4B8B16375F441825A8E141362F14BE1969BBEC8E1CA0BFF9DD'
+$SevenZipSourceArchive = Join-Path $SourceDir '.license-cache\7z2603-src.tar.xz'
+$SevenZipSourceHash = '9CBDE5099C6DEB73691B0579063DA5827522CCBBCBA3F0020FD04E8C8C16C0D4'
 if (-not (Test-Path -LiteralPath $SevenZipSourceArchive -PathType Leaf)) {
-    throw '7-Zip 26.02 corresponding source is required in .license-cache/7z2602-src.tar.xz.'
+    throw '7-Zip 26.03 corresponding source is required in .license-cache/7z2603-src.tar.xz.'
 }
-if ((Get-Item -LiteralPath $SevenZipExe).VersionInfo.FileVersion.Trim() -ne '26.02') {
+if ((Get-Item -LiteralPath $SevenZipExe).VersionInfo.FileVersion.Trim() -ne '26.03') {
     throw 'Update the corresponding-source provenance before changing the bundled 7-Zip version.'
 }
 if ((Get-FileHash -LiteralPath $SevenZipSourceArchive -Algorithm SHA256).Hash -ne $SevenZipSourceHash) {
@@ -1307,7 +1307,7 @@ foreach ($directoryName in @('tests', 'build_assets', 'resources')) {
 }
 Copy-Item -LiteralPath $ReleaseLicenseDir -Destination (Join-Path $SourcePackageDir 'licenses') -Recurse -Force
 Copy-Item -LiteralPath $ReleaseCorrespondingSourceDir -Destination (Join-Path $SourcePackageDir 'corresponding-source') -Recurse -Force
-Copy-Item -LiteralPath $SevenZipSourceArchive -Destination (Join-Path $SourcePackageDir 'corresponding-source\7z2602-src.tar.xz') -Force
+Copy-Item -LiteralPath $SevenZipSourceArchive -Destination (Join-Path $SourcePackageDir 'corresponding-source\7z2603-src.tar.xz') -Force
 Get-ChildItem -LiteralPath (Join-Path $SourceDir 'tests') -File -Filter '*.py' |
     Copy-Item -Destination (Join-Path $SourcePackageDir 'tests') -Force
 foreach ($assetName in @('ChineseSimplified.isl', 'generate_icon.py', 'smart7z.ico')) {

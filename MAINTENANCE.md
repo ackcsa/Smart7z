@@ -87,6 +87,11 @@ python -m venv .build-venv
 
 `requirements-build.txt` 固定构建依赖版本；只运行程序时不需要全部打包工具。不要跨机器复制虚拟环境。下文用 `python` 简写已选定的环境解释器，执行前确认实际路径。
 
+下一次构建的 7-Zip 基线为 26.03；完整组件可放在 `.build-tools/7zip/`
+（`7z.exe`、`7z.dll`、`License.txt`），源码运行可在源码根放置同版 EXE/DLL。
+这些本地二进制不提交。官方源码归档放置于 `.license-cache/7z2603-src.tar.xz`，
+哈希由构建脚本检查。已发布 1.0.5 的 26.02 附件不随此配置更新。
+
 ## 模块
 
 以下文件均位于[源码目录](01_MainProgram/smart7z/)。

@@ -41,7 +41,7 @@ Qt 测试需要 PySide6，真实解压需要 7-Zip，发布测试需要 Windows 
 - 不要用直接调用 build_release.ps1 绕过保护，它会清理对应的已有输出。
 - 还需 PowerShell 7、Inno Setup、64 位 .NET Framework C# 编译器，以及完整 7-Zip 发行目录（7z.exe、7z.dll、License.txt）。
 - Qt/PySide 官方源码归档放入 .license-cache 或 .build-tools\qt-source，固定名称与 SHA-256 见 build_release.ps1。
-- 7-Zip 26.02 官方源码归档放入 .license-cache\7z2602-src.tar.xz；
+- 7-Zip 26.03 官方源码归档放入 .license-cache\7z2603-src.tar.xz；
   可从本源码包 corresponding-source 中复制该原始归档，哈希见 THIRD_PARTY_NOTICES.txt。
 - corresponding-source 中的展开源码供阅读和许可证合规使用，不能替代上述原始归档。
 - 构建输出为 release 中的安装器、便携 ZIP、源码 ZIP 和 SHA256SUMS-<版本>.txt。

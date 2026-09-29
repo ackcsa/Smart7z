@@ -26,6 +26,11 @@
 /01_MainProgram/smart7z/release/
 /01_MainProgram/smart7z/.verification/
 
+# App-local 7-Zip runtime for development; source provenance is versioned.
+/01_MainProgram/smart7z/7z.exe
+/01_MainProgram/smart7z/7z.dll
+/01_MainProgram/smart7z/7-Zip-License.txt
+
 # Python caches and test artifacts
 __pycache__/
 *.py[cod]
