@@ -13,7 +13,7 @@
 
 #define MyAppName "Smart 7z Ultra"
 #define MyAppExeName "Smart7z.exe"
-#define MyAppPublisher "Smart7z"
+#define MyAppPublisher "Kurpphy"
 
 [Setup]
 AppId={{EDCB8E16-9106-4D4B-8520-4D63F5D22370}

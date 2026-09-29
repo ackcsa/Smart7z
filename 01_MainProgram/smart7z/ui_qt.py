@@ -97,6 +97,7 @@ from PySide6.QtWidgets import (
 _startup_trace("ui_import:qtwidgets:end")
 _startup_trace("ui_import:application:start")
 from config import find_sevenzip, get_app_dir, load_config, save_config
+from author_info import ATTRIBUTION, LICENSE_ID, contact_details
 from models import CleanupPolicy, ErrorCategory, Job, JobState, TERMINAL_STATES
 
 # Lazy heavy imports: scheduler pulls executor/recovery/sevenzip and
@@ -1146,6 +1147,14 @@ class SettingsDialog(QDialog):
         cleanup_form.addRow("", self.permanent_fallback_check)
         root.addWidget(cleanup_group)
 
+        author_row = QHBoxLayout()
+        author_row.addWidget(QLabel(f"{ATTRIBUTION} · {LICENSE_ID}"))
+        author_row.addStretch()
+        self.about_button = QPushButton("关于 Smart7z")
+        self.about_button.clicked.connect(self._show_about)
+        author_row.addWidget(self.about_button)
+        root.addLayout(author_row)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
@@ -1154,6 +1163,36 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
+
+    def _show_about(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("关于 Smart7z")
+        dialog.setMinimumWidth(380)
+        layout = QVBoxLayout(dialog)
+        label = QLabel(
+            f"Smart7z {APP_VERSION}\n{ATTRIBUTION}\n\n"
+            "一方代码：GNU GPL version 3 only\n"
+            "自由软件，不提供任何担保。\n"
+            "7-Zip 等第三方组件遵循各自许可证。"
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        contacts = QLabel()
+        contacts.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        contacts.hide()
+        reveal = QPushButton("显示联系方式")
+        def show_contacts():
+            contacts.setText(contact_details())
+            contacts.show()
+            reveal.setEnabled(False)
+        reveal.clicked.connect(show_contacts)
+        layout.addWidget(reveal)
+        layout.addWidget(contacts)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.button(QDialogButtonBox.StandardButton.Close).setText("关闭")
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     def _path_row(self, edit: QLineEdit, callback) -> QWidget:
         row = QWidget()
@@ -2138,6 +2177,7 @@ class Smart7zQtWindow(QMainWindow):
         self.startup_blocked = False
         self._log_recovery_messages(self.scheduler.recovery_messages)
         self.log_event("APP_READY")
+        self._append_log_line(f"Smart7z {APP_VERSION} · {ATTRIBUTION} · {LICENSE_ID}")
         _startup_trace("run_app:scheduler_ready")
         pending, self._pending_startup_jobs = self._pending_startup_jobs, []
         accepted_keys = set()

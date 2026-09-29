@@ -1,5 +1,7 @@
 # Smart7z
 
+by **Kurpphy** · [GPLv3](LICENSE)
+
 面向 Windows 的图形化批量解压工具。把压缩包加入队列后，Smart7z 识别分卷、尝试密码、解压和校验，再把通过检查的输出放到最终位置。默认保留源文件。
 
 ## 下载
@@ -53,3 +55,30 @@
 Set-Location 01_MainProgram/smart7z
 python smart7z.py
 ```
+
+## 作者与支持
+
+by **Kurpphy**
+
+<details>
+<summary>联系方式</summary>
+
+<img src="assets/contact.png" alt="作者联系方式" width="500">
+
+</details>
+
+<details>
+<summary>支持作者：支付宝 / 微信</summary>
+
+<img src="assets/support.png" alt="作者提供的支付宝与微信收款码" width="636">
+
+</details>
+
+打赏自愿，不影响功能、许可或更新获取。扫码后请在支付应用中核对收款人。
+联系方式以图片展示仅减少简单文本采集，不保证无法被 OCR 或其他工具识别。
+
+## 许可证
+
+Smart7z 一方代码使用 **GPL-3.0-only**，详见 [LICENSE](LICENSE) 与
+[版权范围](COPYRIGHT.md)。7-Zip、Qt/PySide 等第三方组件保持各自许可证，
+并不统一改为 GPLv3。本程序不提供任何担保。

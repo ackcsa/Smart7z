@@ -27,6 +27,19 @@ $ChangelogPath = Join-Path $SourceDir 'CHANGELOG.md'
 if (-not (Test-Path -LiteralPath $ChangelogPath -PathType Leaf)) {
     $ChangelogPath = Join-Path $WorkspaceDir 'CHANGELOG.md'
 }
+$ProjectLicensePath = Join-Path $SourceDir 'LICENSE'
+if (-not (Test-Path -LiteralPath $ProjectLicensePath -PathType Leaf)) {
+    $ProjectLicensePath = Join-Path $WorkspaceDir 'LICENSE'
+}
+$CopyrightPath = Join-Path $SourceDir 'COPYRIGHT.md'
+if (-not (Test-Path -LiteralPath $CopyrightPath -PathType Leaf)) {
+    $CopyrightPath = Join-Path $WorkspaceDir 'COPYRIGHT.md'
+}
+foreach ($requiredDocument in @($ProjectLicensePath, $CopyrightPath)) {
+    if (-not (Test-Path -LiteralPath $requiredDocument -PathType Leaf)) {
+        throw "Required copyright document is missing: $requiredDocument"
+    }
+}
 foreach ($documentPath in @($ManualPath, $ChangelogPath)) {
     if (-not (Test-Path -LiteralPath $documentPath -PathType Leaf)) {
         throw "Required release document is missing: $documentPath"
@@ -1108,6 +1121,17 @@ foreach ($required in @($SevenZipExe, $SevenZipDll, $SevenZipLicense)) {
 }
 
 Write-Host 'Assembling shared application files...'
+$SevenZipSourceArchive = Join-Path $SourceDir '.license-cache\7z2602-src.tar.xz'
+$SevenZipSourceHash = 'CF967C98BCA02A4B8B16375F441825A8E141362F14BE1969BBEC8E1CA0BFF9DD'
+if (-not (Test-Path -LiteralPath $SevenZipSourceArchive -PathType Leaf)) {
+    throw '7-Zip 26.02 corresponding source is required in .license-cache/7z2602-src.tar.xz.'
+}
+if ((Get-Item -LiteralPath $SevenZipExe).VersionInfo.FileVersion.Trim() -ne '26.02') {
+    throw 'Update the corresponding-source provenance before changing the bundled 7-Zip version.'
+}
+if ((Get-FileHash -LiteralPath $SevenZipSourceArchive -Algorithm SHA256).Hash -ne $SevenZipSourceHash) {
+    throw '7-Zip corresponding-source SHA256 mismatch.'
+}
 Copy-Item -LiteralPath $SevenZipExe -Destination (Join-Path $BaseAppDir '7z.exe') -Force
 Copy-Item -LiteralPath $SevenZipDll -Destination (Join-Path $BaseAppDir '7z.dll') -Force
 Copy-Item -LiteralPath $SevenZipLicense -Destination (Join-Path $BaseAppDir '7-Zip-License.txt') -Force
@@ -1115,6 +1139,8 @@ Copy-Item -LiteralPath (Join-Path $SourceDir 'build_assets\smart7z.ico') -Destin
 Copy-Item -LiteralPath $ReleasePasswordFile -Destination (Join-Path $BaseAppDir 'code.txt') -Force
 Copy-Item -LiteralPath $ManualPath -Destination (Join-Path $BaseAppDir 'Smart7z-User-Manual.html') -Force
 Copy-Item -LiteralPath $ChangelogPath -Destination (Join-Path $BaseAppDir 'CHANGELOG.md') -Force
+Copy-Item -LiteralPath $ProjectLicensePath -Destination (Join-Path $BaseAppDir 'LICENSE') -Force
+Copy-Item -LiteralPath $CopyrightPath -Destination (Join-Path $BaseAppDir 'COPYRIGHT.md') -Force
 Copy-Item -LiteralPath (Join-Path $SourceDir 'THIRD_PARTY_NOTICES.txt') -Destination (Join-Path $BaseAppDir 'THIRD_PARTY_NOTICES.txt') -Force
 Copy-Item -LiteralPath $ReleaseSourceNotice -Destination (Join-Path $BaseAppDir 'Qt-PySide6-CORRESPONDING_SOURCE.txt') -Force
 Copy-Item -LiteralPath $VcRuntimeNoticePath -Destination (Join-Path $BaseAppDir $VcRuntimeNoticeName) -Force
@@ -1281,6 +1307,7 @@ foreach ($directoryName in @('tests', 'build_assets', 'resources')) {
 }
 Copy-Item -LiteralPath $ReleaseLicenseDir -Destination (Join-Path $SourcePackageDir 'licenses') -Recurse -Force
 Copy-Item -LiteralPath $ReleaseCorrespondingSourceDir -Destination (Join-Path $SourcePackageDir 'corresponding-source') -Recurse -Force
+Copy-Item -LiteralPath $SevenZipSourceArchive -Destination (Join-Path $SourcePackageDir 'corresponding-source\7z2602-src.tar.xz') -Force
 Get-ChildItem -LiteralPath (Join-Path $SourceDir 'tests') -File -Filter '*.py' |
     Copy-Item -Destination (Join-Path $SourcePackageDir 'tests') -Force
 foreach ($assetName in @('ChineseSimplified.isl', 'generate_icon.py', 'smart7z.ico')) {
@@ -1292,6 +1319,8 @@ foreach ($resourceName in @('code.txt', 'smart7z_config.json')) {
 }
 Copy-Item -LiteralPath $ManualPath -Destination (Join-Path $SourcePackageDir 'Smart7z-User-Manual.html') -Force
 Copy-Item -LiteralPath $ChangelogPath -Destination (Join-Path $SourcePackageDir 'CHANGELOG.md') -Force
+Copy-Item -LiteralPath $ProjectLicensePath -Destination (Join-Path $SourcePackageDir 'LICENSE') -Force
+Copy-Item -LiteralPath $CopyrightPath -Destination (Join-Path $SourcePackageDir 'COPYRIGHT.md') -Force
 Copy-Item -LiteralPath $ReleaseSourceNotice -Destination (Join-Path $SourcePackageDir 'Qt-PySide6-CORRESPONDING_SOURCE.txt') -Force
 $sourceReadme = (Get-Content -LiteralPath (Join-Path $SourceDir 'release_readme_source.txt') -Raw -Encoding UTF8).Replace('__VERSION__', $Version)
 [IO.File]::WriteAllText(

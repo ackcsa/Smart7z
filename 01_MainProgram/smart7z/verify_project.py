@@ -34,7 +34,7 @@ def input_fingerprint(source: Path) -> str:
         folder = source / directory
         if folder.is_dir():
             files.extend(p for p in folder.iterdir() if p.is_file())
-    for name in ("README.md", "CHANGELOG.md", "smart7z_user_manual.html"):
+    for name in ("README.md", "CHANGELOG.md", "smart7z_user_manual.html", "LICENSE", "COPYRIGHT.md"):
         path = source.parents[1] / name
         if path.is_file():
             files.append(path)

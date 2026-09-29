@@ -1,6 +1,9 @@
 Smart7z third-party notices
 ============================
 
+Smart7z original code: Copyright (C) 2026 Kurpphy, GPL-3.0-only.
+See LICENSE and COPYRIGHT.md. This does not relicense the components below.
+
 This distribution includes third-party runtime components. Their full license
 texts are provided in the accompanying licenses directory. The Qt/PySide
 license files are copied from the verified Qt 6.11.1 and Qt for Python 6.11.1
@@ -10,6 +13,12 @@ source archives described in Qt-PySide6-CORRESPONDING_SOURCE.txt.
   Copyright (C) 1999-2026 Igor Pavlov.
   7z.exe and 7z.dll are distributed under the terms described in
   7-Zip-License.txt, including GNU LGPL and the unRAR restriction.
+  The unmodified 26.02 upstream source archive is distributed in the matching
+  Smart7z source ZIP as corresponding-source/7z2602-src.tar.xz.
+  Upstream: https://github.com/ip7z/7zip/releases/tag/26.02
+  SHA256: cf967c98bca02a4b8b16375f441825a8e141362f14be1969bbec8e1ca0bff9dd
+  Smart7z invokes the separate 7z.exe process; its own GPL declaration does not
+  remove the independent unRAR restriction or relicense 7z.dll.
 
 Python
   Copyright Python Software Foundation and contributors.

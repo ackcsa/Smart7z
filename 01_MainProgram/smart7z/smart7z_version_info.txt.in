@@ -15,11 +15,12 @@ VSVersionInfo(
         StringTable(
           '080404B0',
           [
-            StringStruct('CompanyName', 'Smart7z'),
+            StringStruct('CompanyName', 'Kurpphy'),
             StringStruct('FileDescription', 'Smart 7z Ultra'),
             StringStruct('FileVersion', '__VERSION__'),
             StringStruct('InternalName', 'Smart7z'),
-            StringStruct('LegalCopyright', 'Copyright (c) 2026'),
+            StringStruct('LegalCopyright', 'Copyright (c) 2026 Kurpphy'),
+            StringStruct('Comments', 'k7-6e83d9a4'),
             StringStruct('OriginalFilename', 'Smart7z.exe'),
             StringStruct('ProductName', 'Smart 7z Ultra'),
             StringStruct('ProductVersion', '__VERSION__')
